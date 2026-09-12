@@ -1,0 +1,43 @@
+[project]
+name = "notebookgpt-monorepo"
+version = "0"
+description = "Raiz do workspace NotebookGPT; nao e distribuida."
+requires-python = ">=3.13"
+dependencies = ["notebookgpt-ui"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+notebookgpt-core = { workspace = true }
+notebookgpt-inference = { workspace = true }
+notebookgpt-ui = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "httpx2>=2.0",   # usado pelos testes para fabricar erros do SDK da OpenAI
+    "flet-cli",
+    "flet-desktop",
+    "flet-web",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF", "TID", "PTH", "LOG", "G"]
+ignore = [
+    "SIM108",  # ternarios nao sao sempre mais claros que um if/else
+]

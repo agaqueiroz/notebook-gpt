@@ -1,0 +1,34 @@
+[project]
+name = "notebookgpt-ui"
+version = "1.0.0"
+description = "Interface Flet do NotebookGPT: um workspace escuro para conversas e anotacoes."
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }
+]
+dependencies = [
+    "notebookgpt-core",
+    "notebookgpt-inference",
+    "flet>=0.86",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+notebookgpt = "notebookgpt_ui.app:run"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "notebookgpt_ui"
+
+[tool.flet]
+org = "dev.flet"
+company = "André Queiroz"
+copyright = "Copyright (C) 2026 by André Queiroz"
+app_module = "notebookgpt_ui.app"
+
+[tool.flet.metadata]
+title = "NotebookGPT"

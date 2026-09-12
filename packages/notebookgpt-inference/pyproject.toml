@@ -1,0 +1,22 @@
+[project]
+name = "notebookgpt-inference"
+version = "1.0.0"
+description = "Cliente do servidor local de inferencia (API da OpenAI) usado pelo NotebookGPT."
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }
+]
+dependencies = [
+    # O SDK oficial da OpenAI e justamente o que prova a compatibilidade do
+    # serv04.local: nada aqui e especifico daquele servidor alem da base URL.
+    "notebookgpt-core",
+    "openai>=3.0,<4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "notebookgpt_inference"
