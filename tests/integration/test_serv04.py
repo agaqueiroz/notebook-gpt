@@ -54,9 +54,10 @@ PERGUNTAS = [
 ]
 
 # O llama-3.2-1b não acerta as cinco. Com temperature=0 e o formato de fonte
-# atual ele fica em 4/5; o piso de 3 dá folga para variação do servidor e ainda
-# derruba uma regressão de verdade -- trocar o texto delimitado por cabeçalhos
-# Markdown, por exemplo, leva a taxa para 1-2/5.
+# atual ele fica em 4/5; o piso de 3 dá folga para a variação do servidor (que
+# existe mesmo com temperature=0) e ainda derruba uma regressão de verdade --
+# mover as fontes para `system` ou voltar aos cabeçalhos Markdown leva a taxa
+# para 0-1/5. Ver notebookgpt_core.context para a medição completa.
 GROUNDING_MINIMO = 3
 
 

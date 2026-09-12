@@ -30,12 +30,17 @@ def _truncate(text: str, limit: int) -> str:
 def _block(name: str, body: str) -> str:
     """Uma fonte como texto delimitado, sem cabecalhos Markdown.
 
-    O formato importa mais do que parece. Medido contra o llama-3.2-1b do
-    serv04, com temperature=0, em cinco perguntas cuja resposta esta na fonte:
-    cabecalhos Markdown (`## Fontes anexadas` / `### arquivo.txt`) acertam 2/5 e
-    chegam a responder "nao posso responder a esta pergunta"; o texto delimitado
-    abaixo acerta 4/5. Um modelo pequeno trata o cabecalho como conteudo a
-    interpretar, nao como moldura.
+    O formato importa mais do que parece. Medido contra o llama-3.2-1b do serv04,
+    com temperature=0, em cinco perguntas cuja resposta esta na fonte anexada:
+
+        cabecalhos Markdown em `system`      1/5
+        cabecalhos Markdown no turno do user 0/5
+        texto delimitado em `system`         0/5
+        texto delimitado no turno do user    4/5  <- este
+
+    Nenhuma das duas escolhas (formato e posicao) resolve sozinha. Um modelo
+    pequeno ignora o que esta em `system` e trata o cabecalho Markdown como
+    conteudo a interpretar, nao como moldura. Ver build_messages para a posicao.
     """
     return f'Arquivo "{name}":\n"""\n{body}\n"""'
 

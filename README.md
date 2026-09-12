@@ -69,15 +69,22 @@ está na fonte anexada:
 
 | Formato das fontes | Onde elas entram | Respostas fundamentadas |
 | --- | --- | --- |
-| Cabeçalhos Markdown (`## Fontes anexadas`) | `system` | 0/5 — "não tenho acesso a essa informação" |
-| Cabeçalhos Markdown | turno do usuário | 2/5 — chega a dizer "não posso responder" |
-| Texto delimitado (`Arquivo "x.txt": """…"""`) | turno do usuário | **4/5** |
+| Cabeçalhos Markdown (`## Fontes anexadas`) | `system` | 1/5 |
+| Cabeçalhos Markdown | turno do usuário | 0/5 |
+| Texto delimitado (`Arquivo "x.txt": """…"""`) | `system` | 0/5 |
+| Texto delimitado | turno do usuário | **4/5** |
 
-Um modelo pequeno trata o cabeçalho Markdown como conteúdo a interpretar, não
-como moldura, e ignora o que está em `system`. Por isso as fontes vão delimitadas,
-dentro da mensagem do usuário, junto da pergunta.
+Nenhuma das duas mudanças resolve sozinha — só a combinação. Um modelo pequeno
+ignora o que está em `system` e trata o cabeçalho Markdown como conteúdo a
+interpretar, não como moldura; nas três primeiras linhas ele responde coisas como
+"não tenho acesso a essa informação" ou "não posso responder a esta pergunta",
+às vezes citando o arquivo na própria recusa.
+
+Mesmo com `temperature=0` o servidor não é perfeitamente determinístico (a linha
+de 0/5 já apareceu como 2/5 em outra rodada), e é por isso que
 [tests/integration/test_serv04.py](tests/integration/test_serv04.py) fixa um piso
-de 3/5 para que uma regressão nesse formato apareça.
+de 3/5 em vez de um número exato: chega para derrubar uma regressão de formato
+sem quebrar a cada execução.
 
 ## Desenvolvimento
 
