@@ -12,6 +12,17 @@ env/
 # Environments / secrets
 .env
 
+# Dados do usuário. O caderno guarda o texto integral de cada fonte anexada, e o
+# índice guarda cada trecho verbatim na coluna auxiliar do vec0. Em uso normal os
+# dois vivem em %APPDATA%, mas uma cópia trazida para cá durante uma depuração
+# entraria num `git add -A` sem ninguém notar.
+notebookgpt.txt
+index.db
+*.db
+
+# Configuração por máquina do Claude Code; launch.json continua versionado.
+.claude/settings.local.json
+
 # Tool caches
 .mypy_cache/
 .ruff_cache/

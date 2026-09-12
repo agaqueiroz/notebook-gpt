@@ -4,6 +4,9 @@ Tirar a licença de recusa fez o modelo parar de negar o que está no contexto. 
 risco óbvio é ele passar a inventar quando o fato não existe. Uma metade sem a
 outra seria um retrocesso, então as duas são testadas juntas.
 
+Os relatórios de ocorrência abaixo são **ficção**, escritos para medir: locais,
+datas e valores não correspondem a registro real de lugar nenhum.
+
     uv run --env-file .env pytest -m network
 """
 

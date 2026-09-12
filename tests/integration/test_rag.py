@@ -1,6 +1,11 @@
 """O RAG contra o serv04 de verdade — a comparação que justifica o trabalho.
 
-uv run --env-file .env pytest -m network
+O regulamento abaixo é **ficção**, escrita para medir recuperação: os benefícios e
+os números não reproduzem norma, processo ou dado real de instituição nenhuma. A
+forma repetida entre os artigos é proposital — são os distratores próximos que
+obrigam o ranking a funcionar.
+
+    uv run --env-file .env pytest -m network
 """
 
 from collections.abc import AsyncIterator

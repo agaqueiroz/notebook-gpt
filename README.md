@@ -9,6 +9,12 @@ As conversas acontecem contra um servidor de inferência **local**, que implemen
 API da OpenAI: [agaqueiroz/local-inference-server](https://github.com/agaqueiroz/local-inference-server).
 Nenhum prompt sai da rede de casa.
 
+## Aviso
+
+Projeto pessoal, para fins de estudo, sem relação com qualquer empregador e sem
+garantias. Os textos usados nos testes são ficção escrita para medir recuperação —
+não reproduzem norma, processo ou dado real de instituição nenhuma.
+
 ## Como rodar
 
 ```bash

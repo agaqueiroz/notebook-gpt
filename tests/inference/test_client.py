@@ -116,9 +116,9 @@ async def test_sdk_failures_become_an_inference_error_in_portuguese(error, expec
 
 def test_the_api_key_never_shows_up_in_the_settings_repr():
     # Um traceback de pytest imprime as fixtures; a chave nao pode ir junto.
-    settings = InferenceSettings(api_key="chave-secreta-de-verdade")
+    settings = InferenceSettings(api_key="nao-e-uma-chave-de-verdade")
 
-    assert "chave-secreta-de-verdade" not in repr(settings)
+    assert "nao-e-uma-chave-de-verdade" not in repr(settings)
     assert "serv04.local" in repr(settings)
 
 
