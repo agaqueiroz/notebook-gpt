@@ -250,3 +250,7 @@ comparando conteúdo e `mtime` antes e depois da leitura.
 E se a gravação falhar de todo modo — disco cheio, antivírus, permissão — a
 conversa continua na tela e um aviso aparece uma vez. O caderno é o registro, não
 a conversa.
+
+## Licença
+
+MIT — ver [LICENSE](LICENSE).

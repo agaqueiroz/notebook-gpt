@@ -3,6 +3,7 @@ name = "notebookgpt-inference"
 version = "1.0.0"
 description = "Cliente do servidor local de inferencia (API da OpenAI) usado pelo NotebookGPT."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 authors = [
     { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }

@@ -3,6 +3,7 @@ name = "notebookgpt-ui"
 version = "1.0.0"
 description = "Interface Flet do NotebookGPT: um workspace escuro para conversas e anotacoes."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 authors = [
     { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }

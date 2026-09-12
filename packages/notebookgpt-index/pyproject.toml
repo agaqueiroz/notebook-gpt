@@ -3,6 +3,7 @@ name = "notebookgpt-index"
 version = "1.0.0"
 description = "Banco vetorial embutido do NotebookGPT: indexa as fontes TXT e recupera trechos."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 authors = [
     { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }

@@ -3,6 +3,7 @@ name = "notebookgpt-core"
 version = "1.0.0"
 description = "Dominio do NotebookGPT: caderno, fontes TXT, persistencia e montagem de contexto."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 authors = [
     { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }
