@@ -8,7 +8,6 @@ daqui saem apenas trechos de texto e `InferenceError`.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import asdict
 
 import openai
 from notebookgpt_core.models import Message
@@ -16,9 +15,23 @@ from openai import AsyncOpenAI
 
 from notebookgpt_inference.settings import InferenceSettings
 
+MAX_EMBEDDING_INPUTS = 64
+"""Limite do servidor, medido: 65 entradas devolvem 400 `too_many_inputs`."""
+
 
 class InferenceError(Exception):
     """Falha ao conversar com o servidor, com texto pronto para a interface."""
+
+
+def _wire_format(messages: Sequence[Message]) -> list[dict[str, str]]:
+    """So `role` e `content` vao para a API.
+
+    `Message` tambem carrega os trechos que embasaram a resposta, para a interface
+    mostrar a procedencia -- mas isso e assunto do caderno, nao do protocolo. Um
+    `asdict` ingenuo mandaria `passages` junto e o servidor receberia um campo que
+    nao existe na API da OpenAI.
+    """
+    return [{"role": message.role, "content": message.content} for message in messages]
 
 
 def _build_client(settings: InferenceSettings) -> AsyncOpenAI:
@@ -44,7 +57,7 @@ class LocalInferenceClient:
         try:
             stream = await self._client.chat.completions.create(
                 model=self.settings.model,
-                messages=[asdict(message) for message in messages],
+                messages=_wire_format(messages),
                 temperature=self.settings.temperature,
                 stream=True,
             )
@@ -78,6 +91,42 @@ class LocalInferenceClient:
     async def reply(self, messages: Sequence[Message]) -> str:
         """A resposta inteira, para quem nao precisa de streaming."""
         return "".join([chunk async for chunk in self.stream_reply(messages)])
+
+    async def embed(self, texts: Sequence[str], *, prefix: str = "") -> list[list[float]]:
+        """Os vetores de `texts`, na mesma ordem, em lotes que o servidor aceita.
+
+        Os vetores chegam normalizados (norma medida = 1.0), entao quem consome
+        pode tratar cosseno como produto escalar. `prefix` e o marcador do e5
+        (`passage: ` ao indexar, `query: ` ao perguntar).
+        """
+        if not texts:
+            return []
+
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), MAX_EMBEDDING_INPUTS):
+            batch = [f"{prefix}{text}" for text in texts[start : start + MAX_EMBEDDING_INPUTS]]
+            try:
+                answer = await self._client.embeddings.create(
+                    model=self.settings.embedding_model,
+                    input=batch,
+                )
+            except openai.AuthenticationError as error:
+                raise InferenceError(
+                    f"{self.settings.host} recusou a chave. Confira NOTEBOOKGPT_API_KEY no seu .env."
+                ) from error
+            except openai.APIConnectionError as error:
+                raise InferenceError(
+                    f"Nao foi possivel falar com {self.settings.host}. Verifique se o servidor esta no ar."
+                ) from error
+            except openai.OpenAIError as error:
+                raise InferenceError(f"Falha ao gerar embeddings em {self.settings.host}: {error}") from error
+
+            # `index` e o que garante a ordem: a API nao promete devolver os itens
+            # na ordem de entrada, e um desalinhamento aqui associaria o vetor de um
+            # trecho ao texto de outro -- um bug silencioso e dificil de ver.
+            vectors.extend(item.embedding for item in sorted(answer.data, key=lambda item: item.index))
+
+        return vectors
 
     async def aclose(self) -> None:
         """Fecha o pool de conexoes.

@@ -34,6 +34,9 @@ EOF
 | `NOTEBOOKGPT_BASE_URL` | `http://serv04.local:8000/v1` | Endereço do servidor |
 | `NOTEBOOKGPT_API_KEY` | *(vazio)* | Chave exigida pelo servidor |
 | `NOTEBOOKGPT_MODEL` | `llama-3.2-1b` | Modelo de chat |
+| `NOTEBOOKGPT_EMBEDDING_MODEL` | `multilingual-e5-small` | Modelo de embeddings, para a busca |
+| `NOTEBOOKGPT_PASSAGE_PREFIX` | `passage: ` | Prefixo do e5 ao indexar (ver abaixo) |
+| `NOTEBOOKGPT_QUERY_PREFIX` | `query: ` | Prefixo do e5 ao perguntar (ver abaixo) |
 | `NOTEBOOKGPT_TEMPERATURE` | `0` | Zero para responder a partir da fonte, não inventar |
 | `NOTEBOOKGPT_TIMEOUT` | `120` | Tempo limite, em segundos |
 
@@ -50,11 +53,12 @@ Um workspace [uv](https://docs.astral.sh/uv/concepts/projects/workspaces/) com u
 
 | Pacote | Responsabilidade | Depende de |
 | --- | --- | --- |
-| `notebookgpt-core` | Caderno, fontes TXT, persistência e montagem do contexto | biblioteca padrão |
-| `notebookgpt-inference` | Cliente do servidor local, streaming e tradução de erros | `core`, `openai` |
-| `notebookgpt-ui` | Interface Flet (o pacote original deste repositório) | `core`, `inference`, `flet` |
+| `notebookgpt-core` | Caderno, fontes TXT, persistência, pedaços e montagem do contexto | biblioteca padrão |
+| `notebookgpt-inference` | Cliente do servidor local: streaming, embeddings e tradução de erros | `core`, `openai` |
+| `notebookgpt-index` | Banco vetorial embutido e recuperação dos trechos | `core`, `inference`, `sqlite-vec` |
+| `notebookgpt-ui` | Interface Flet (o pacote original deste repositório) | os três acima, `flet` |
 
-A direção é sempre `ui → inference → core`. O domínio não conhece rede nem
+A direção é sempre `ui → index → inference → core`. O domínio não conhece rede nem
 interface, e o cliente de inferência não conhece a interface — é o que permite
 testar a montagem do contexto e o streaming sem abrir uma janela.
 [tests/test_layers.py](tests/test_layers.py) verifica isso no código-fonte.
@@ -66,10 +70,55 @@ Nesta etapa, **somente `.txt`**. O seletor de arquivos já filtra por extensão 
 
 As fontes são lidas no momento em que você as adiciona e ficam gravadas junto do
 caderno — é o que faz elas sobreviverem a um reinício também no modo web, onde o
-Flet nunca devolve o caminho do arquivo. Como o servidor roda com
-`LIS_MAX_MODEL_LENGTH=4096`, `notebookgpt_core.context` corta as fontes por
-orçamento de caracteres e marca o corte com `… [fonte truncada]`. É a limitação
-mais visível do PoC; [TODO.md](TODO.md) aponta o caminho do RAG.
+Flet nunca devolve o caminho do arquivo.
+
+## O banco vetorial e o RAG
+
+O servidor roda com `LIS_MAX_MODEL_LENGTH=4096`, então nem todo TXT cabe no
+contexto. Em vez de cortar e torcer, o NotebookGPT indexa as fontes num **banco
+vetorial embutido** e manda ao modelo só os trechos que respondem à pergunta.
+
+O caminho é híbrido, e essa é a decisão que mais importa:
+
+- **cabendo as fontes inteiras** no orçamento de 6000 caracteres, elas vão inteiras.
+  Recuperar num corpus pequeno só subtrai — os trechos descartados teriam cabido.
+- **acima disso**, entra a busca por similaridade.
+
+O banco é um arquivo SQLite com a extensão [`sqlite-vec`](https://github.com/asg017/sqlite-vec):
+uma tabela virtual `vec0` faz o KNN em SQL, e uma coluna auxiliar `+content` guarda
+o texto do trecho, então a busca já devolve o conteúdo. Fica em `index.db`, ao lado
+do caderno; no modo web vive em memória e é reconstruído a cada sessão. É **derivado**:
+apagar o arquivo custa uma reindexação, nunca o caderno.
+
+A reindexação é incremental — o `sha256` do conteúdo de cada fonte fica gravado, e
+reabrir o aplicativo não gasta uma rodada de embeddings.
+
+### O que foi medido
+
+| Fato | Valor | O que decidiu |
+| --- | --- | --- |
+| Dimensões do `multilingual-e5-small` | 384 | `float[384]` fixo; `dimensions` é recusado com 400 |
+| Norma dos vetores devolvidos | **1.0** | cosseno **é** produto escalar, e a distância L2 padrão do `vec0` ordena igual — sem NumPy, sem métrica declarada |
+| Entradas por requisição | 64 (erro 400 em 65) | o lote de `LocalInferenceClient.embed` |
+| Teto de tokens do embedding | 511, truncagem silenciosa | o tamanho do trecho |
+| Caracteres por token (pt-BR) | ~3,9 | 511 tokens ≈ 2000 chars, daí `CHUNK_CHARS = 1200` |
+| Similaridade entre textos sem relação | **0,81** | **não existe limiar útil**: o corte é por ranking e orçamento |
+| Recall@1 em 12 perguntas com distratores próximos | **12/12** | o piso de 9 em `tests/integration/test_rag.py` |
+
+### O prefixo do e5 — pendência no servidor
+
+O e5 foi treinado com `query: ` para a pergunta e `passage: ` para o documento. O
+servidor aplica **um único** prefixo a toda entrada (`LIS_EMBEDDING_INPUT_PREFIX`),
+sem o cliente poder escolher, então os dois prefixos corretos só funcionam com ele
+esvaziado no serv04.
+
+Medindo o contador de tokens (`tokens(X)` menos o custo marginal de uma cópia de
+`X` revela o overhead fixo), **o servidor ainda prepende `query: `** — 3 tokens,
+batendo exatamente com `t("query: ")`. Enquanto for assim, o cliente está dobrando
+o prefixo. Na prática isso **não mudou nada** no recall medido (12/12 com prefixo,
+sem prefixo e com prefixo dobrado), mas é errado e está anotado em
+[TODO.md](TODO.md). Para desligar o lado do cliente até lá, basta
+`NOTEBOOKGPT_PASSAGE_PREFIX=` e `NOTEBOOKGPT_QUERY_PREFIX=` no `.env`.
 
 ### O formato do contexto não é cosmético
 

@@ -6,9 +6,11 @@ from notebookgpt_core.context import (
     TOTAL_SOURCE_CHARS,
     TRUNCATION_MARK,
     build_messages,
+    fits_whole,
+    format_passages,
     format_sources,
 )
-from notebookgpt_core.models import Message, NotebookData, Source
+from notebookgpt_core.models import Chunk, Message, NotebookData, Source
 
 
 def test_only_the_instructions_go_in_system():
@@ -80,3 +82,51 @@ def test_only_the_most_recent_turns_are_replayed():
     assert replayed[-1].content == history[-1].content
     # O historico entra cru: as fontes so acompanham o turno atual.
     assert all("Fontes anexadas" not in message.content for message in replayed)
+
+
+def test_retrieved_passages_keep_the_measured_format_and_position():
+    # A medicao que vale para as fontes inteiras vale para os trechos: texto
+    # delimitado, no turno do usuario. O RAG nao e desculpa para mudar o formato.
+    passages = [Chunk(source_name="a.txt", ordinal=2, total=7, content="bata as claras")]
+
+    request = build_messages(NotebookData(), "como faco?", passages)
+
+    assert [message.role for message in request].count("system") == 1
+    assert request[-1].role == "user"
+    assert '"""' in request[-1].content
+    assert "##" not in request[-1].content
+    assert "como faco?" in request[-1].content
+
+
+def test_a_passage_says_which_file_and_which_piece_it_came_from():
+    passages = [Chunk(source_name="previdencia.txt", ordinal=3, total=9, content="texto")]
+
+    block = format_passages(passages)
+
+    assert 'Arquivo "previdencia.txt" (trecho 3 de 9):' in block
+
+
+def test_passages_replace_the_whole_sources_when_given():
+    notebook = NotebookData(sources=[Source(name="grande.txt", content="conteudo inteiro da fonte")])
+    passages = [Chunk(source_name="grande.txt", ordinal=1, total=4, content="so este trecho")]
+
+    request = build_messages(notebook, "pergunta", passages)
+
+    assert "so este trecho" in request[-1].content
+    assert "conteudo inteiro da fonte" not in request[-1].content
+
+
+def test_an_empty_retrieval_tells_the_model_there_is_nothing():
+    request = build_messages(NotebookData(), "pergunta", [])
+
+    assert NO_SOURCES_NOTE in request[-1].content
+
+
+def test_fits_whole_decides_by_the_same_budget_the_context_uses():
+    assert fits_whole([])
+    assert fits_whole([Source(name="a.txt", content="x" * TOTAL_SOURCE_CHARS)])
+    assert not fits_whole([Source(name="a.txt", content="x" * (TOTAL_SOURCE_CHARS + 1))])
+    # A soma e o que conta, nao o tamanho de cada uma.
+    metade = "x" * (TOTAL_SOURCE_CHARS // 2)
+    assert fits_whole([Source(name="a.txt", content=metade), Source(name="b.txt", content=metade)])
+    assert not fits_whole([Source(name=f"{i}.txt", content=metade) for i in range(3)])

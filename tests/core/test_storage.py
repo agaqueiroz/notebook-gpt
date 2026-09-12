@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from notebookgpt_core.models import Message, NotebookData, Source
+from notebookgpt_core.models import Chunk, Message, NotebookData, Source
 from notebookgpt_core.storage import (
     StorageError,
     load_notebook,
@@ -74,3 +74,54 @@ def test_the_storage_error_keeps_the_original_cause(tmp_path):
         save_notebook(blocker / "notebookgpt.txt", NotebookData())
 
     assert isinstance(caught.value.__cause__, OSError)
+
+
+def test_the_passages_behind_an_answer_survive_a_round_trip():
+    notebook = NotebookData(
+        messages=[
+            Message(role="user", content="qual a regra?"),
+            Message(
+                role="assistant",
+                content="A regra e X.",
+                passages=[
+                    Chunk(source_name="regulamento.txt", ordinal=3, total=9, content="texto do trecho"),
+                    Chunk(source_name="anexo.txt", ordinal=1, total=2, content="outro trecho"),
+                ],
+            ),
+        ]
+    )
+
+    restored = notebook_from_text(notebook_to_text(notebook))
+
+    assert restored == notebook
+
+
+def test_messages_written_before_the_vector_index_still_load():
+    legacy = json.dumps({"sources": [], "messages": [{"role": "user", "content": "oi"}], "notes": ""})
+
+    restored = notebook_from_text(legacy)
+
+    assert restored.messages == [Message(role="user", content="oi", passages=[])]
+
+
+def test_a_message_missing_its_role_does_not_crash_the_load():
+    # Caderno corrompido abre vazio em vez de derrubar o aplicativo.
+    quebrado = json.dumps({"messages": [{"content": "sem papel"}]})
+
+    assert notebook_from_text(quebrado) == NotebookData()
+
+
+def test_a_passage_with_a_bad_ordinal_does_not_crash_the_load():
+    quebrado = json.dumps(
+        {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "x",
+                    "passages": [{"source_name": "a.txt", "ordinal": "nao e numero", "total": 2, "content": "t"}],
+                }
+            ]
+        }
+    )
+
+    assert notebook_from_text(quebrado) == NotebookData()

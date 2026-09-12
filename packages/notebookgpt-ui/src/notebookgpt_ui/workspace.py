@@ -4,14 +4,17 @@ from collections.abc import Awaitable, Callable
 
 import flet as ft
 from notebookgpt_core import (
+    Chunk,
     Message,
     NotebookData,
     Source,
     StorageError,
     UnsupportedSourceError,
     build_messages,
+    fits_whole,
     source_from_bytes,
 )
+from notebookgpt_index import Indexer, VectorIndexError
 from notebookgpt_inference import InferenceError, LocalInferenceClient
 
 Persist = Callable[[NotebookData], Awaitable[None]]
@@ -22,6 +25,7 @@ def NotebookWorkspace(
     page: ft.Page,
     picker: ft.FilePicker,
     client: LocalInferenceClient,
+    indexer: Indexer,
     persist: Persist,
     initial_data: NotebookData,
 ):
@@ -30,6 +34,7 @@ def NotebookWorkspace(
     notes, set_notes = ft.use_state(initial_data.notes)
     prompt, set_prompt = ft.use_state("")
     sending, set_sending = ft.use_state(False)
+    indexing, set_indexing = ft.use_state(False)
     left_visible, set_left_visible = ft.use_state(True)
     right_visible, set_right_visible = ft.use_state(True)
 
@@ -49,6 +54,9 @@ def NotebookWorkspace(
     # Uma falha de gravação avisa uma vez e cala. `change_notes` dispara a cada
     # tecla: com o disco barrado, seriam dezenas de SnackBar idênticos.
     storage_warned = ft.use_ref(False)
+    # Idem para o indice: sem ele a conversa segue com o contexto truncado, e
+    # repetir o aviso a cada pergunta so atrapalharia.
+    index_warned = ft.use_ref(False)
 
     async def commit(
         next_sources: list[Source] | None = None,
@@ -110,12 +118,62 @@ def NotebookWorkspace(
 
         if added:
             await commit(next_sources=current + added)
+            await reindex()
 
     def remove_handler(name: str):
         async def remove_source(_):
             await commit(next_sources=[s for s in stored.current.sources if s.name != name])
+            await reindex()
 
         return remove_source
+
+    async def reindex() -> None:
+        """Poe o banco vetorial em dia com as fontes do caderno.
+
+        Acontece ao anexar ou remover, que é quando o usuário já espera trabalho —
+        e não no meio de uma pergunta. Falhar aqui não impede nada: sem índice, a
+        conversa volta ao contexto truncado.
+        """
+        set_indexing(True)
+        try:
+            await indexer.sync(stored.current.sources)
+        except (InferenceError, VectorIndexError) as error:
+            if not index_warned.current:
+                index_warned.current = True
+                warn(f"Índice indisponível, seguindo sem busca por similaridade. {error}")
+        finally:
+            set_indexing(False)
+
+    # Na abertura, o caderno pode ter fontes que o índice não tem: no modo web ele
+    # vive em memória e nasce vazio a cada sessão, e no desktop o `index.db` pode
+    # ter sido apagado. Sem isto, a primeira pergunta iria ao modelo dizendo que
+    # não há fontes. `sync` é incremental, então quando o índice já está em dia
+    # isto custa só a comparação dos digests.
+    async def sync_on_open() -> None:
+        if initial_data.sources:
+            await reindex()
+
+    ft.use_effect(sync_on_open, [])
+
+    async def gather_passages(question: str) -> list[Chunk] | None:
+        """Os trechos que respondem à pergunta, ou None para mandar tudo.
+
+        Cabendo as fontes inteiras no orçamento, recuperar só subtrai: os trechos
+        descartados teriam cabido de qualquer jeito.
+        """
+        if fits_whole(stored.current.sources):
+            return None
+        try:
+            passages = await indexer.retrieve(question)
+        except (InferenceError, VectorIndexError) as error:
+            if not index_warned.current:
+                index_warned.current = True
+                warn(f"Busca por similaridade falhou, usando o contexto truncado. {error}")
+            return None
+
+        # Índice vazio com fontes na mão: melhor mandar o contexto truncado do que
+        # dizer ao modelo que não há fonte nenhuma.
+        return passages or None
 
     async def submit_prompt(_):
         clean_prompt = prompt.strip()
@@ -124,17 +182,20 @@ def NotebookWorkspace(
 
         notebook = stored.current
         history = [*notebook.messages, Message(role="user", content=clean_prompt)]
-        request = build_messages(notebook, clean_prompt)
 
         set_prompt("")
         set_sending(True)
         set_messages([*history, Message(role="assistant", content="")])
 
+        passages = await gather_passages(clean_prompt)
+        request = build_messages(notebook, clean_prompt, passages)
+        used = passages or []
+
         answer = ""
         try:
             async for delta in client.stream_reply(request):
                 answer += delta
-                set_messages([*history, Message(role="assistant", content=answer)])
+                set_messages([*history, Message(role="assistant", content=answer, passages=used)])
         except InferenceError as error:
             # O erro entra na conversa: é onde o usuário está olhando, e fica
             # gravado junto do prompt que o causou.
@@ -145,7 +206,7 @@ def NotebookWorkspace(
             answer = "_O servidor respondeu sem conteúdo._"
 
         set_sending(False)
-        await commit(next_messages=[*history, Message(role="assistant", content=answer)])
+        await commit(next_messages=[*history, Message(role="assistant", content=answer, passages=used)])
 
     def change_prompt(event):
         set_prompt(event.control.value)
@@ -185,10 +246,45 @@ def NotebookWorkspace(
                         ],
                         tight=True,
                     ),
+                    *passages_panel(message.passages),
                 ]
             ),
             padding=12,
         )
+
+    def passages_panel(passages: list[Chunk]) -> list[ft.Control]:
+        """Os trechos que embasaram a resposta, recolhidos.
+
+        Num PoC de RAG, poder abrir e ver o que o modelo recebeu é metade do valor:
+        quando a resposta sai errada, é isto que diz se a culpa foi da busca ou do
+        modelo.
+        """
+        if not passages:
+            return []
+
+        return [
+            ft.ExpansionTile(
+                title=ft.Text(f"{len(passages)} trecho(s) consultado(s)", size=12),
+                dense=True,
+                controls=[
+                    ft.Container(
+                        padding=ft.Padding.only(left=12, right=12, bottom=8),
+                        content=ft.Column(
+                            spacing=2,
+                            controls=[
+                                ft.Text(
+                                    f"{passage.source_name} · trecho {passage.ordinal} de {passage.total}",
+                                    size=11,
+                                    weight=ft.FontWeight.BOLD,
+                                ),
+                                ft.Text(passage.content, size=11, selectable=True),
+                            ],
+                        ),
+                    )
+                    for passage in passages
+                ],
+            )
+        ]
 
     def source_item(source: Source) -> ft.Control:
         return ft.Row(
@@ -223,6 +319,15 @@ def NotebookWorkspace(
                     on_click=add_files,
                 ),
                 ft.Text("Somente .txt nesta versão.", size=11),
+                ft.Row(
+                    controls=[ft.ProgressRing(width=12, height=12), ft.Text("Indexando…", size=11)],
+                    tight=True,
+                )
+                if indexing
+                else ft.Text(
+                    "Busca por similaridade ativa." if not fits_whole(sources) else "Fontes cabem inteiras; sem busca.",
+                    size=11,
+                ),
                 ft.Column(controls=[source_item(source) for source in sources]),
             ]
         ),

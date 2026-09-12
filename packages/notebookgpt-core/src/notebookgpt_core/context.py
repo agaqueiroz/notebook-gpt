@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from notebookgpt_core.models import Message, NotebookData, Source
+from notebookgpt_core.models import Chunk, Message, NotebookData, Source
 
 # O servidor local roda com LIS_MAX_MODEL_LENGTH=4096, entao o contexto tem
 # orcamento: um TXT inteiro nao cabe e mandar tudo faz o servidor recusar o pedido.
@@ -27,7 +27,7 @@ def _truncate(text: str, limit: int) -> str:
     return text[:limit].rstrip() + TRUNCATION_MARK
 
 
-def _block(name: str, body: str) -> str:
+def _block(name: str, body: str, *, label: str = "") -> str:
     """Uma fonte como texto delimitado, sem cabecalhos Markdown.
 
     O formato importa mais do que parece. Medido contra o llama-3.2-1b do serv04,
@@ -42,7 +42,35 @@ def _block(name: str, body: str) -> str:
     pequeno ignora o que esta em `system` e trata o cabecalho Markdown como
     conteudo a interpretar, nao como moldura. Ver build_messages para a posicao.
     """
-    return f'Arquivo "{name}":\n"""\n{body}\n"""'
+    return f'Arquivo "{name}"{label}:\n"""\n{body}\n"""'
+
+
+def format_passages(passages: list[Chunk]) -> str:
+    """Os trechos recuperados, no mesmo formato delimitado das fontes inteiras.
+
+    O rotulo ganha a procedencia ("trecho 2 de 7") porque a resposta cita o arquivo
+    e o usuario precisa poder conferir de onde o modelo tirou o que disse.
+    """
+    if not passages:
+        return NO_SOURCES_NOTE
+
+    return "\n\n".join(
+        _block(
+            passage.source_name,
+            passage.content,
+            label=f" (trecho {passage.ordinal} de {passage.total})",
+        )
+        for passage in passages
+    )
+
+
+def fits_whole(sources: list[Source]) -> bool:
+    """As fontes cabem inteiras no orcamento, sem precisar de recuperacao?
+
+    Recuperar num corpus pequeno so subtrai: os trechos descartados teriam cabido
+    de qualquer jeito. Acima do orcamento e que a busca por similaridade ganha.
+    """
+    return sum(len(source.content) for source in sources) <= TOTAL_SOURCE_CHARS
 
 
 def format_sources(sources: list[Source]) -> str:
@@ -63,17 +91,25 @@ def format_sources(sources: list[Source]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_messages(notebook: NotebookData, prompt: str) -> list[Message]:
-    """Monta system + historico recente + (fontes junto da pergunta).
+def build_messages(
+    notebook: NotebookData,
+    prompt: str,
+    passages: list[Chunk] | None = None,
+) -> list[Message]:
+    """Monta system + historico recente + (contexto junto da pergunta).
 
-    As fontes vao no turno do usuario, nao em `system`. Medido contra o
+    O contexto vai no turno do usuario, nao em `system`. Medido contra o
     llama-3.2-1b do serv04: com as fontes em `system` -- em uma mensagem ou em
     duas -- o modelo responde "nao tenho acesso a essa informacao" mesmo com o
     texto ali; no turno do usuario ele passa a usar o conteudo. So o turno atual
-    carrega as fontes, para nao repeti-las em cada mensagem do historico.
+    carrega o contexto, para nao repeti-lo em cada mensagem do historico.
+
+    `passages` sao os trechos vindos do banco vetorial. Sem eles, as fontes entram
+    inteiras (truncadas pelo orcamento) -- o caminho de quando tudo cabe.
     """
     history = notebook.messages[-HISTORY_TURNS:] if HISTORY_TURNS else []
-    question = f"{format_sources(notebook.sources)}\n\nPergunta: {prompt}"
+    context = format_passages(passages) if passages is not None else format_sources(notebook.sources)
+    question = f"{context}\n\nPergunta: {prompt}"
     return [
         Message(role="system", content=SYSTEM_PROMPT),
         *[Message(role=message.role, content=message.content) for message in history],

@@ -12,6 +12,13 @@ DEFAULT_TIMEOUT = 120.0
 # Zero por padrao: a tarefa e responder a partir de uma fonte anexada, nao
 # inventar. Tambem torna a resposta reproduzivel, o que os testes de rede usam.
 DEFAULT_TEMPERATURE = 0.0
+DEFAULT_EMBEDDING_MODEL = "multilingual-e5-small"
+# O e5 foi treinado com prefixos distintos para documento e pergunta, e sem eles
+# a qualidade de recuperacao cai. O servidor aplica um prefixo unico a toda
+# entrada (LIS_EMBEDDING_INPUT_PREFIX); com ele esvaziado la, estes valem aqui.
+# Se o servidor ainda estiver prefixando, esvazie estes para nao dobrar.
+DEFAULT_PASSAGE_PREFIX = "passage: "
+DEFAULT_QUERY_PREFIX = "query: "
 
 
 @dataclass(frozen=True)
@@ -29,6 +36,9 @@ class InferenceSettings:
     model: str = DEFAULT_MODEL
     timeout: float = DEFAULT_TIMEOUT
     temperature: float = DEFAULT_TEMPERATURE
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    passage_prefix: str = DEFAULT_PASSAGE_PREFIX
+    query_prefix: str = DEFAULT_QUERY_PREFIX
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InferenceSettings:
@@ -46,6 +56,11 @@ class InferenceSettings:
             model=env.get("NOTEBOOKGPT_MODEL") or DEFAULT_MODEL,
             timeout=number("NOTEBOOKGPT_TIMEOUT", DEFAULT_TIMEOUT),
             temperature=number("NOTEBOOKGPT_TEMPERATURE", DEFAULT_TEMPERATURE),
+            embedding_model=env.get("NOTEBOOKGPT_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL,
+            # `or` nao serve aqui: string vazia e uma escolha valida e precisa
+            # sobreviver, e o jeito de desligar o prefixo do cliente.
+            passage_prefix=env.get("NOTEBOOKGPT_PASSAGE_PREFIX", DEFAULT_PASSAGE_PREFIX),
+            query_prefix=env.get("NOTEBOOKGPT_QUERY_PREFIX", DEFAULT_QUERY_PREFIX),
         )
 
     @property

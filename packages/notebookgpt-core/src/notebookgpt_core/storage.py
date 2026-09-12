@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from notebookgpt_core.models import Message, NotebookData, Source
+from notebookgpt_core.models import Chunk, Message, NotebookData, Source
 
 
 class StorageError(Exception):
@@ -27,6 +27,25 @@ def _source_from_raw(raw: object) -> Source | None:
     return None
 
 
+def _message_from_raw(raw: dict) -> Message:
+    """Le uma mensagem, com ou sem os trechos que a embasaram.
+
+    Mensagens gravadas antes do banco vetorial nao tem `passages`; elas continuam
+    carregando, com a lista vazia.
+    """
+    passages = [
+        Chunk(
+            source_name=str(item["source_name"]),
+            ordinal=int(item["ordinal"]),
+            total=int(item["total"]),
+            content=str(item["content"]),
+        )
+        for item in raw.get("passages", [])
+        if isinstance(item, dict) and "source_name" in item
+    ]
+    return Message(role=str(raw["role"]), content=str(raw["content"]), passages=passages)
+
+
 def notebook_from_text(text: str | None) -> NotebookData:
     """Converte o conteudo textual persistido em dados do caderno."""
     if not text:
@@ -37,10 +56,13 @@ def notebook_from_text(text: str | None) -> NotebookData:
         sources = [source for source in map(_source_from_raw, raw.get("sources", [])) if source is not None]
         return NotebookData(
             sources=sources,
-            messages=[Message(**item) for item in raw.get("messages", [])],
+            messages=[_message_from_raw(item) for item in raw.get("messages", [])],
             notes=str(raw.get("notes", "")),
         )
-    except (AttributeError, json.JSONDecodeError, TypeError):
+    except (AttributeError, KeyError, TypeError, ValueError):
+        # ValueError cobre json.JSONDecodeError e um `total` que nao vira inteiro;
+        # KeyError, uma mensagem sem `role`. Caderno ilegivel abre vazio em vez de
+        # derrubar o aplicativo -- o mesmo principio da falha de gravacao.
         return NotebookData()
 
 

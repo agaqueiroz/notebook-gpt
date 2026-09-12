@@ -1,0 +1,23 @@
+[project]
+name = "notebookgpt-index"
+version = "1.0.0"
+description = "Banco vetorial embutido do NotebookGPT: indexa as fontes TXT e recupera trechos."
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "André Galindo Alves de Queiroz", email = "5283204+agaqueiroz@users.noreply.github.com" }
+]
+dependencies = [
+    "notebookgpt-core",
+    "notebookgpt-inference",
+    # Tabela virtual vec0 sobre o sqlite3 da stdlib: KNN em SQL, um arquivo, sem
+    # servidor. Wheel py3-none-win_amd64, nada a compilar.
+    "sqlite-vec>=0.1.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "notebookgpt_index"

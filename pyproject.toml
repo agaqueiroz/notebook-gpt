@@ -13,6 +13,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 notebookgpt-core = { workspace = true }
+notebookgpt-index = { workspace = true }
 notebookgpt-inference = { workspace = true }
 notebookgpt-ui = { workspace = true }
 

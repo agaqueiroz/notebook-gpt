@@ -7,11 +7,36 @@ contexto. O que falta é o que ficou deliberadamente de fora dele.
 
 - [ ] Aceitar outros formatos além de TXT (PDF, DOCX, MD), extraindo texto e metadados
       antes de enviar ao modelo. O portão está em `notebookgpt_core.sources.SUPPORTED_SUFFIXES`.
-- [ ] Trocar o contexto por RAG usando `POST /v1/embeddings` do próprio serv04
-      (`multilingual-e5-small` já está carregado lá). Hoje `notebookgpt_core.context`
-      corta as fontes por orçamento de caracteres, o que não escala para arquivos grandes.
+- [x] ~~Trocar o contexto por RAG usando `POST /v1/embeddings` do próprio serv04.~~
+      Feito: banco vetorial embutido com `sqlite-vec`, híbrido (fontes inteiras quando
+      cabem, recuperação quando não).
 - [ ] Contar tokens em vez de caracteres, para usar o `LIS_MAX_MODEL_LENGTH` real
-      em vez das constantes conservadoras de `context.py`.
+      em vez das constantes conservadoras de `context.py` e `chunking.py`.
+
+## Prefixo do e5 — pendência de estudo
+
+- [ ] **Esvaziar `LIS_EMBEDDING_INPUT_PREFIX` no serv04.** Medido pelo contador de
+      tokens, o servidor ainda prepende `query: ` (3 tokens) a toda entrada, então
+      os prefixos do cliente estão sendo dobrados: o modelo vê `query: passage: …`
+      ao indexar. Enquanto não for feito, dá para desligar o lado do cliente com
+      `NOTEBOOKGPT_PASSAGE_PREFIX=` e `NOTEBOOKGPT_QUERY_PREFIX=` no `.env`.
+- [ ] Entender **quanto isso custa de fato**. O recall medido foi 12/12 nas três
+      configurações (correta, dobrada e sem prefixo nenhum), ou seja, neste corpus a
+      escolha não aparece. Falta um caso em que apareça — provavelmente corpus maior,
+      perguntas mais ambíguas ou trechos mais parecidos entre si. Sem esse caso, a
+      recomendação do e5 é fé na documentação, não medição.
+- [ ] Propor ao `local-inference-server` um prefixo **por requisição** (ou um campo
+      que distinga documento de pergunta). A API da OpenAI não tem esse conceito, mas
+      qualquer cliente de RAG contra esse servidor esbarra no mesmo limite.
+
+## Banco vetorial
+
+- [ ] Trechos com fronteira melhor: um trecho pode começar com pontuação órfã vinda
+      da sobreposição. É cosmético para o embedding, mas suja o painel de trechos.
+- [ ] Reindexação em segundo plano para arquivos grandes: hoje anexar um TXT longo
+      segura a interface até os embeddings voltarem.
+- [ ] `index.db` cresce com o histórico de fontes removidas? Não — `drop_source`
+      limpa —, mas falta um `VACUUM` ocasional para o arquivo encolher de fato.
 
 ## Conversa
 

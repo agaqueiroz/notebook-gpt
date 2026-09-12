@@ -9,6 +9,7 @@ authors = [
 ]
 dependencies = [
     "notebookgpt-core",
+    "notebookgpt-index",
     "notebookgpt-inference",
     "flet>=0.86",
     "python-dotenv>=1.0",
