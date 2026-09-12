@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "notebookgpt-web",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "flet",
+        "run",
+        "--web",
+        "--port",
+        "8550",
+        "packages/notebookgpt-ui/src/notebookgpt_ui/app.py"
+      ],
+      "port": 8550
+    }
+  ]
+}

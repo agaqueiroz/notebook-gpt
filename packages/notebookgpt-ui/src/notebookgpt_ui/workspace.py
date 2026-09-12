@@ -1,6 +1,6 @@
 """Workspace declarativo do NotebookGPT."""
 
-from pathlib import Path
+from collections.abc import Awaitable, Callable
 
 import flet as ft
 from notebookgpt_core import (
@@ -9,13 +9,11 @@ from notebookgpt_core import (
     Source,
     UnsupportedSourceError,
     build_messages,
-    notebook_to_text,
-    save_notebook,
     source_from_bytes,
 )
 from notebookgpt_inference import InferenceError, LocalInferenceClient
 
-NOTEBOOK_FILENAME = "notebookgpt.txt"
+Persist = Callable[[NotebookData], Awaitable[None]]
 
 
 @ft.component
@@ -23,7 +21,7 @@ def NotebookWorkspace(
     page: ft.Page,
     picker: ft.FilePicker,
     client: LocalInferenceClient,
-    storage_path: Path | None,
+    persist: Persist,
     initial_data: NotebookData,
 ):
     sources, set_sources = ft.use_state(initial_data.sources)
@@ -39,15 +37,13 @@ def NotebookWorkspace(
         next_messages: list[Message] = messages,
         next_notes: str = notes,
     ) -> None:
-        notebook = NotebookData(
-            sources=next_sources,
-            messages=next_messages,
-            notes=next_notes,
+        await persist(
+            NotebookData(
+                sources=next_sources,
+                messages=next_messages,
+                notes=next_notes,
+            )
         )
-        if storage_path is not None:
-            save_notebook(storage_path, notebook)
-        else:
-            await page.shared_preferences.set(NOTEBOOK_FILENAME, notebook_to_text(notebook))
 
     def warn(text: str) -> None:
         page.show_dialog(ft.SnackBar(content=ft.Text(text)))

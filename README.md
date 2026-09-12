@@ -70,3 +70,12 @@ uv run pytest
 
 Os testes não tocam a rede: o cliente aceita um `AsyncOpenAI` injetado
 ([tests/inference/test_client.py](tests/inference/test_client.py)).
+
+Para ver a interface no navegador, sem abrir a janela nativa:
+
+```bash
+uv run flet run --web --port 8550 packages/notebookgpt-ui/src/notebookgpt_ui/app.py
+```
+
+No modo web o caderno é gravado em `SharedPreferences`, não em disco, porque o
+navegador não expõe um diretório de documentos ao aplicativo.
