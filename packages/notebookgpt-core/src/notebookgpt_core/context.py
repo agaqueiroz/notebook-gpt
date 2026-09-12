@@ -6,16 +6,41 @@ from notebookgpt_core.models import Chunk, Message, NotebookData, Source
 
 # O servidor local roda com LIS_MAX_MODEL_LENGTH=4096, entao o contexto tem
 # orcamento: um TXT inteiro nao cabe e mandar tudo faz o servidor recusar o pedido.
+#
+# 6000 caracteres sao ~1540 tokens, ou 38% do teto -- a folga e convidativa e foi
+# testada: ampliar para 10000 nao mudou o acerto (6/8 nos dois), e acrescentar os
+# trechos vizinhos ao que respondeu piorou, misturando duas ocorrencias numa
+# resposta e errando uma contagem. Num modelo de 1B, contexto extra e distrator,
+# nao ajuda. Se for mexer aqui, meca antes.
 PER_SOURCE_CHARS = 3000
 TOTAL_SOURCE_CHARS = 6000
 HISTORY_TURNS = 6
 TRUNCATION_MARK = "\n… [fonte truncada]"
 
+# CUIDADO AO EDITAR: nao acrescente nenhuma clausula sobre a informacao poder estar
+# ausente. Parece uma salvaguarda obvia contra invencao e e a causa medida do bug
+# oposto -- o modelo recusando o que esta no contexto.
+#
+# Medido contra o llama-3.2-1b, temperature=0, oito perguntas de detalhe cuja
+# resposta estava no trecho recuperado (a busca acertou 8/8, sempre em 1o lugar):
+#
+#   com "se elas nao contiverem a resposta, diga isso claramente"   3/8, 5 recusas
+#   sem qualquer mencao a ausencia (este)                           6/8, 0 recusas
+#   "responda direto; so diga que nao achou depois de reler"        0/8, 8 recusas
+#
+# A terceira linha e a licao: a mencao contamina mesmo quando a instrucao e para
+# nao usa-la. Um modelo pequeno trata "nao encontrar" como molde disponivel, nao
+# como condicao a avaliar, e uma pergunta em forma de consulta factual basta para
+# dispara-lo antes de ele ler o texto.
+#
+# O medo e infundado: em quatro perguntas cujo fato nao existia no corpus, o
+# modelo declinou nas quatro. A capacidade de recusar continua la; ela so para de
+# disparar a toa.
 SYSTEM_PROMPT = (
-    "Voce e o NotebookGPT, um assistente que responde com base nas fontes anexadas pelo usuario. "
+    "Voce e o NotebookGPT. O texto abaixo foi extraido dos arquivos que o usuario anexou. "
+    "Responda a pergunta usando esse texto. "
     "Responda sempre em portugues do Brasil e formate a resposta em Markdown. "
-    "Use apenas o que estiver nas fontes; se elas nao contiverem a resposta, diga isso claramente "
-    "em vez de inventar. Quando usar uma fonte, mencione o nome do arquivo."
+    "Quando usar uma fonte, mencione o nome do arquivo."
 )
 
 NO_SOURCES_NOTE = "O usuario ainda nao anexou nenhuma fonte. Responda com o que souber e avise que nao ha fontes."

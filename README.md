@@ -145,6 +145,40 @@ de 0/5 já apareceu como 2/5 em outra rodada), e é por isso que
 de 3/5 em vez de um número exato: chega para derrubar uma regressão de formato
 sem quebrar a cada execução.
 
+### A armadilha do system prompt
+
+A primeira versão do `SYSTEM_PROMPT` trazia uma salvaguarda que parecia óbvia:
+*"se elas não contiverem a resposta, diga isso claramente em vez de inventar"*.
+Ela causava o bug oposto — o modelo recusando perguntas cuja resposta estava no
+contexto, às vezes **enunciando o fato dentro da negativa**:
+
+> "Não há informações sobre o portao norte ficando inoperante por **9 dias**,
+> conforme mencionado na **Ocorrência 3**"
+
+Medido sobre oito perguntas de detalhe, num corpus onde a busca acertou 8/8 e
+sempre em primeiro lugar:
+
+| System prompt | Acertos | Recusas |
+| --- | --- | --- |
+| com a licença de recusa | 3/8 | 5/8 |
+| **sem qualquer menção a ausência** | **6/8** | **0/8** |
+| "responda direto; só declare ausência depois de reler" | 0/8 | **8/8** |
+
+A terceira linha é a lição, e é contraintuitiva: **a menção contamina mesmo quando
+a instrução é para não usá-la.** Um modelo pequeno trata "não encontrar" como
+molde disponível, não como condição a avaliar, e uma pergunta em forma de consulta
+factual basta para disparar o molde antes de ele ler o texto.
+
+O medo que motivava a cláusula era infundado: em perguntas cujo fato não existe no
+corpus, o modelo **declinou em todas**. A capacidade de recusar continua lá; ela só
+parou de disparar à toa. [tests/integration/test_recusas.py](tests/integration/test_recusas.py)
+fixa as duas metades, porque uma sem a outra seria um retrocesso.
+
+O que **não** ajudou, também medido: ampliar o orçamento de 6000 para 10000
+caracteres (6/8 nos dois) e incluir os trechos vizinhos ao que respondeu, que
+piorou — misturou duas ocorrências numa resposta e errou uma contagem. Num modelo
+de 1B, contexto extra é distrator.
+
 ## Desenvolvimento
 
 ```bash
@@ -171,6 +205,14 @@ uv run flet run --web --port 8550 packages/notebookgpt-ui/src/notebookgpt_ui/app
 
 No modo web o caderno é gravado em `SharedPreferences`, não em disco, porque o
 navegador não expõe um diretório de arquivos ao aplicativo.
+
+## Uma inferência por vez
+
+O serv04 atende um pedido por vez e devolve `503 server_busy` depois de
+`LIS_BUSY_TIMEOUT` (30 s). O NotebookGPT traduz isso para um aviso que diz o que
+está acontecendo, em vez de "erro 503", e não indexa enquanto uma resposta está em
+streaming — anexar um arquivo nesse momento deixa a indexação pendente e ela
+acontece assim que a resposta termina.
 
 ## Onde o caderno é gravado, e por que ali
 

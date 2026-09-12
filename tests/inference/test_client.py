@@ -189,3 +189,40 @@ async def test_the_passages_of_a_message_never_reach_the_api():
     await client.reply([com_trechos])
 
     assert completions.calls[0]["messages"] == [{"role": "user", "content": "u"}]
+
+
+def busy_error() -> openai.APIStatusError:
+    """O 503 que o serv04 devolve quando ja esta atendendo outra inferencia."""
+    body = {
+        "error": {
+            "message": "Servidor ocupado com outra inferência há mais de 30s.",
+            "type": "server_error",
+            "code": "server_busy",
+        }
+    }
+    response = httpx.Response(503, request=httpx.Request("POST", "http://serv04.local:8000/v1"), json=body)
+    return openai.InternalServerError("503", response=response, body=body)
+
+
+async def test_a_busy_server_says_so_instead_of_reporting_error_503():
+    # O servidor atende um pedido por vez. "respondeu com erro 503" manda o usuario
+    # procurar defeito onde ha so concorrencia.
+    client, _ = fake_client(error=busy_error())
+
+    with pytest.raises(InferenceError, match="ocupado com outra"):
+        await client.reply([Message(role="user", content="oi")])
+
+
+async def test_a_busy_server_is_reported_the_same_way_when_embedding():
+    client, _ = fake_client_with_embeddings(count=1, error=busy_error())
+
+    with pytest.raises(InferenceError, match="ocupado com outra"):
+        await client.embed(["um"])
+
+
+async def test_other_status_errors_keep_the_generic_message():
+    response = httpx.Response(500, request=httpx.Request("POST", "http://serv04.local:8000/v1"))
+    client, _ = fake_client(error=openai.InternalServerError("500", response=response, body=None))
+
+    with pytest.raises(InferenceError, match="respondeu com erro 500"):
+        await client.reply([Message(role="user", content="oi")])

@@ -130,3 +130,44 @@ def test_fits_whole_decides_by_the_same_budget_the_context_uses():
     metade = "x" * (TOTAL_SOURCE_CHARS // 2)
     assert fits_whole([Source(name="a.txt", content=metade), Source(name="b.txt", content=metade)])
     assert not fits_whole([Source(name=f"{i}.txt", content=metade) for i in range(3)])
+
+
+# As expressoes que, medidas contra o llama-3.2-1b, disparam o molde de recusa: o
+# modelo passa a responder "nao ha informacoes" mesmo com o fato no contexto. Com a
+# licenca de recusa o acerto foi 3/8 e as recusas 5/8; sem ela, 6/8 e zero recusas.
+# Um prompt que mandava recusar "so depois de reler" foi o pior de todos: 0/8.
+GATILHOS_DE_RECUSA = (
+    "nao contiverem",
+    "não contiverem",
+    "nao encontr",
+    "não encontr",
+    "em vez de inventar",
+    "nao estiver",
+    "não estiver",
+    "caso nao",
+    "caso não",
+)
+
+
+def test_the_system_prompt_never_mentions_missing_information():
+    """O teste feio que impede a regressao medida.
+
+    Acrescentar uma salvaguarda contra invencao parece obvio e e exatamente o que
+    causa o bug oposto. Se este teste incomodar, leia o comentario em context.py
+    antes de relaxa-lo -- a medicao esta la.
+    """
+    baixo = SYSTEM_PROMPT.lower()
+
+    encontrados = [gatilho for gatilho in GATILHOS_DE_RECUSA if gatilho in baixo]
+    assert not encontrados, (
+        f"SYSTEM_PROMPT voltou a insinuar ausencia de informacao: {encontrados}. "
+        "Isso derruba o acerto de 6/8 para 3/8 e traz de volta as recusas."
+    )
+
+
+def test_the_system_prompt_still_says_what_to_do():
+    baixo = SYSTEM_PROMPT.lower()
+
+    assert "portugues do brasil" in baixo
+    assert "markdown" in baixo
+    assert "arquivo" in baixo

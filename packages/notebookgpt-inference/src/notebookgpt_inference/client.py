@@ -23,6 +23,27 @@ class InferenceError(Exception):
     """Falha ao conversar com o servidor, com texto pronto para a interface."""
 
 
+BUSY_CODE = "server_busy"
+BUSY_MESSAGE = (
+    "O servidor esta ocupado com outra inferencia. Ele atende um pedido por vez; "
+    "espere a resposta atual terminar e tente de novo."
+)
+
+
+def _is_busy(error: openai.APIStatusError) -> bool:
+    """O 503 de fila do servidor, que nao e uma falha real.
+
+    O serv04 atende uma inferencia por vez e devolve 503 `server_busy` depois de
+    LIS_BUSY_TIMEOUT. Dizer "respondeu com erro 503" manda o usuario procurar
+    defeito onde ha so concorrencia.
+    """
+    if error.status_code != 503:
+        return False
+    body = error.body if isinstance(error.body, dict) else {}
+    detail = body.get("error") if isinstance(body.get("error"), dict) else {}
+    return detail.get("code") == BUSY_CODE or BUSY_CODE in str(error)
+
+
 def _wire_format(messages: Sequence[Message]) -> list[dict[str, str]]:
     """So `role` e `content` vao para a API.
 
@@ -84,6 +105,8 @@ class LocalInferenceClient:
                 f"Nao foi possivel falar com {self.settings.host}. Verifique se o servidor esta no ar."
             ) from error
         except openai.APIStatusError as error:
+            if _is_busy(error):
+                raise InferenceError(BUSY_MESSAGE) from error
             raise InferenceError(f"{self.settings.host} respondeu com erro {error.status_code}.") from error
         except openai.OpenAIError as error:
             raise InferenceError(f"Falha ao conversar com {self.settings.host}: {error}") from error
@@ -117,6 +140,12 @@ class LocalInferenceClient:
             except openai.APIConnectionError as error:
                 raise InferenceError(
                     f"Nao foi possivel falar com {self.settings.host}. Verifique se o servidor esta no ar."
+                ) from error
+            except openai.APIStatusError as error:
+                if _is_busy(error):
+                    raise InferenceError(BUSY_MESSAGE) from error
+                raise InferenceError(
+                    f"Falha ao gerar embeddings em {self.settings.host}: erro {error.status_code}."
                 ) from error
             except openai.OpenAIError as error:
                 raise InferenceError(f"Falha ao gerar embeddings em {self.settings.host}: {error}") from error

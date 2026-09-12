@@ -71,3 +71,24 @@ contexto. O que falta é o que ficou deliberadamente de fora dele.
 - [ ] Distinguir "o caderno não existe" de "existe e não abre" em `load_notebook`.
       Hoje os dois casos devolvem um caderno vazio em silêncio, e foi esse silêncio
       que escondeu o bug da pasta protegida por um tempo.
+
+## Limites do modelo de 1B
+
+- [ ] **Sensibilidade de frase.** "Quantas telhas o granizo perfurou?" recusa 3 de 3
+      execucoes com o trecho certo no contexto e "18 telhas" visivel; "O granizo
+      perfurou quantas telhas de policarbonato?" responde certo. Nao e variancia nem
+      falha de busca. Um reescritor de pergunta resolveria, mas custa uma inferencia
+      a mais por pergunta -- medir se compensa nesta GPU antes de adotar.
+- [ ] **Transcricao numerica.** Numeros escritos por extenso na fonte ("quatrocentos
+      e trinta") voltam errados na resposta ("4 pedidos"). Com algarismos no texto o
+      acerto e bom. Se as suas fontes escreverem numeros por extenso, isto aparece.
+- [ ] Avaliar o Gemma-3-Gaia-PT-BR-4b que o servidor suporta. Fica fora do escopo
+      atual por custar mais GPU, mas e o caminho obvio se a qualidade do 1B travar.
+
+## Concorrencia no servidor
+
+- [x] ~~O serv04 atende uma inferencia por vez e devolve 503 `server_busy`.~~ O
+      cliente traduz para um aviso legivel e a interface adia a indexacao enquanto
+      uma resposta esta em streaming.
+- [ ] A indexacao de um arquivo grande ainda segura a interface ate os embeddings
+      voltarem; trabalho em segundo plano com barra de progresso resolveria.

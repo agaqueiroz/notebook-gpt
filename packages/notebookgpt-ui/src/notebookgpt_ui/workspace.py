@@ -127,6 +127,16 @@ def NotebookWorkspace(
 
         return remove_source
 
+    # Fontes anexadas enquanto uma resposta corre: o serv04 atende uma inferência
+    # por vez e devolve 503 se receber duas. Fica pendente e indexa quando a
+    # resposta terminar.
+    pending_index = ft.use_ref(False)
+    # O espelho de `sending` num ref, porque `reindex` precisa do valor de agora e
+    # não do valor da renderização em que foi criada: ao drenar a fila logo após
+    # `set_sending(False)`, a variável de estado ainda diz True e o trabalho ficaria
+    # adiado para sempre.
+    streaming = ft.use_ref(False)
+
     async def reindex() -> None:
         """Poe o banco vetorial em dia com as fontes do caderno.
 
@@ -134,6 +144,11 @@ def NotebookWorkspace(
         e não no meio de uma pergunta. Falhar aqui não impede nada: sem índice, a
         conversa volta ao contexto truncado.
         """
+        if streaming.current:
+            pending_index.current = True
+            return
+
+        pending_index.current = False
         set_indexing(True)
         try:
             await indexer.sync(stored.current.sources)
@@ -184,6 +199,7 @@ def NotebookWorkspace(
         history = [*notebook.messages, Message(role="user", content=clean_prompt)]
 
         set_prompt("")
+        streaming.current = True
         set_sending(True)
         set_messages([*history, Message(role="assistant", content="")])
 
@@ -205,8 +221,13 @@ def NotebookWorkspace(
         if not answer:
             answer = "_O servidor respondeu sem conteúdo._"
 
+        streaming.current = False
         set_sending(False)
         await commit(next_messages=[*history, Message(role="assistant", content=answer, passages=used)])
+
+        if pending_index.current:
+            # `streaming` ja e False aqui, entao `reindex` vai em frente.
+            await reindex()
 
     def change_prompt(event):
         set_prompt(event.control.value)
