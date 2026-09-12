@@ -9,6 +9,10 @@ from pathlib import Path
 from notebookgpt_core.models import Message, NotebookData, Source
 
 
+class StorageError(Exception):
+    """Nao foi possivel gravar o caderno."""
+
+
 def _source_from_raw(raw: object) -> Source | None:
     """Le uma fonte nos dois formatos ja gravados por versoes do aplicativo.
 
@@ -59,6 +63,22 @@ def load_notebook(path: Path) -> NotebookData:
 
 
 def save_notebook(path: Path, notebook: NotebookData) -> None:
-    """Persiste o estado em um TXT legivel e portatil (conteudo JSON)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(notebook_to_text(notebook), encoding="utf-8")
+    """Persiste o estado em um TXT legivel e portatil (conteudo JSON).
+
+    Levanta StorageError -- e nao OSError cru -- para que a interface tenha uma
+    mensagem pronta e possa seguir a conversa em vez de cair.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(notebook_to_text(notebook), encoding="utf-8")
+    except OSError as error:
+        # A mensagem cita o Windows de proposito: quando o Acesso Controlado a
+        # Pastas bloqueia a escrita, o erro chega como ENOENT ("arquivo nao
+        # encontrado") em vez de permissao negada, o que manda quem le para o
+        # lado errado. Foi exatamente o que aconteceu com Documents dentro do
+        # OneDrive.
+        raise StorageError(
+            f"Nao foi possivel gravar o caderno em {path}: {error}. "
+            "No Windows, a Protecao contra Ransomware (Acesso Controlado a Pastas) "
+            "pode estar bloqueando a escrita nessa pasta."
+        ) from error

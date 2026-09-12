@@ -1,7 +1,14 @@
 import json
 
+import pytest
 from notebookgpt_core.models import Message, NotebookData, Source
-from notebookgpt_core.storage import load_notebook, notebook_from_text, notebook_to_text, save_notebook
+from notebookgpt_core.storage import (
+    StorageError,
+    load_notebook,
+    notebook_from_text,
+    notebook_to_text,
+    save_notebook,
+)
 
 
 def test_round_trip_preserves_sources_messages_and_notes():
@@ -42,3 +49,28 @@ def test_save_creates_missing_directories_and_load_reads_it_back(tmp_path):
 
 def test_loading_a_missing_file_yields_an_empty_notebook(tmp_path):
     assert load_notebook(tmp_path / "nao-existe.txt") == NotebookData()
+
+
+def test_a_blocked_write_becomes_a_storage_error_with_the_path(tmp_path):
+    # Um arquivo no lugar da pasta: o mkdir falha com OSError, como a Protecao
+    # contra Ransomware faz na pratica -- sem precisar mexer no Windows.
+    blocker = tmp_path / "nao-e-pasta"
+    blocker.write_text("sou um arquivo", encoding="utf-8")
+    path = blocker / "notebookgpt.txt"
+
+    with pytest.raises(StorageError) as caught:
+        save_notebook(path, NotebookData(notes="n"))
+
+    mensagem = str(caught.value)
+    assert str(path) in mensagem
+    assert "Ransomware" in mensagem
+
+
+def test_the_storage_error_keeps_the_original_cause(tmp_path):
+    blocker = tmp_path / "nao-e-pasta"
+    blocker.write_text("x", encoding="utf-8")
+
+    with pytest.raises(StorageError) as caught:
+        save_notebook(blocker / "notebookgpt.txt", NotebookData())
+
+    assert isinstance(caught.value.__cause__, OSError)

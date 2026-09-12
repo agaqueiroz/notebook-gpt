@@ -20,7 +20,7 @@ pytestmark = pytest.mark.network
 def settings() -> InferenceSettings:
     loaded = InferenceSettings.from_env()
     if not loaded.api_key:
-        pytest.skip("NOTEBOOKGPT_API_KEY não está no ambiente (veja .env.example)")
+        pytest.skip("NOTEBOOKGPT_API_KEY não está no ambiente (veja a tabela de variáveis no README)")
     return loaded
 
 

@@ -8,12 +8,19 @@ from notebookgpt_core.sources import (
     read_txt_source,
     source_from_bytes,
 )
-from notebookgpt_core.storage import load_notebook, notebook_from_text, notebook_to_text, save_notebook
+from notebookgpt_core.storage import (
+    StorageError,
+    load_notebook,
+    notebook_from_text,
+    notebook_to_text,
+    save_notebook,
+)
 
 __all__ = [
     "Message",
     "NotebookData",
     "Source",
+    "StorageError",
     "UnsupportedSourceError",
     "build_messages",
     "format_sources",

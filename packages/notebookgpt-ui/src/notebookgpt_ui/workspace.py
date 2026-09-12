@@ -7,6 +7,7 @@ from notebookgpt_core import (
     Message,
     NotebookData,
     Source,
+    StorageError,
     UnsupportedSourceError,
     build_messages,
     source_from_bytes,
@@ -45,12 +46,21 @@ def NotebookWorkspace(
         )
     )
 
+    # Uma falha de gravação avisa uma vez e cala. `change_notes` dispara a cada
+    # tecla: com o disco barrado, seriam dezenas de SnackBar idênticos.
+    storage_warned = ft.use_ref(False)
+
     async def commit(
         next_sources: list[Source] | None = None,
         next_messages: list[Message] | None = None,
         next_notes: str | None = None,
     ) -> None:
-        """Aplica a mudança no estado da tela e no caderno, e grava."""
+        """Aplica a mudança no estado da tela e no caderno, e grava.
+
+        A ordem importa: o estado da tela é atualizado antes da gravação, então
+        uma resposta que acabou de chegar continua visível mesmo se o disco
+        recusar a escrita. Perder a conversa por causa do arquivo não é opção.
+        """
         notebook = stored.current
         if next_sources is not None:
             notebook.sources = next_sources
@@ -61,7 +71,13 @@ def NotebookWorkspace(
         if next_notes is not None:
             notebook.notes = next_notes
             set_notes(next_notes)
-        await persist(notebook)
+
+        try:
+            await persist(notebook)
+        except StorageError as error:
+            if not storage_warned.current:
+                storage_warned.current = True
+                warn(str(error))
 
     def warn(text: str) -> None:
         page.show_dialog(ft.SnackBar(content=ft.Text(text)))

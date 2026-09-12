@@ -13,11 +13,21 @@ Nenhum prompt sai da rede de casa.
 
 ```bash
 uv sync
-cp .env.example .env     # e preencha NOTEBOOKGPT_API_KEY
 uv run notebookgpt
 ```
 
-A chave é a mesma `LIS_API_KEY` configurada no servidor. O `.env` não é versionado.
+Antes da primeira execução, crie um `.env` na raiz com a chave do servidor — é a
+mesma `LIS_API_KEY` configurada lá. O `.env` não é versionado, e não há gabarito
+rastreado no repositório justamente para não haver onde um segredo caia por
+descuido; a tabela abaixo é a referência.
+
+```bash
+cat > .env <<'EOF'
+NOTEBOOKGPT_BASE_URL=http://serv04.local:8000/v1
+NOTEBOOKGPT_API_KEY=cole-a-sua-chave-aqui
+NOTEBOOKGPT_MODEL=llama-3.2-1b
+EOF
+```
 
 | Variável | Padrão | O que é |
 | --- | --- | --- |
@@ -111,4 +121,35 @@ uv run flet run --web --port 8550 packages/notebookgpt-ui/src/notebookgpt_ui/app
 ```
 
 No modo web o caderno é gravado em `SharedPreferences`, não em disco, porque o
-navegador não expõe um diretório de documentos ao aplicativo.
+navegador não expõe um diretório de arquivos ao aplicativo.
+
+## Onde o caderno é gravado, e por que ali
+
+No desktop, a conversa e as anotações vão para uma subpasta `notebookgpt/` dentro
+do **diretório de suporte do aplicativo** (`get_application_support_directory()`),
+não para a pasta Documentos. Onde isso cai depende de como o app foi iniciado:
+
+| Como roda | Caminho medido |
+| --- | --- |
+| `uv run notebookgpt` (desenvolvimento) | `%APPDATA%\Appveyor Systems Inc\Flet\notebookgpt\` |
+| Empacotado por `flet build` | `%APPDATA%\<org>\<app>\notebookgpt\` |
+
+Em desenvolvimento o diretório é o do próprio runner do Flet, compartilhado com
+qualquer outro app Flet rodando do código-fonte — o `org` e o `company` do
+`pyproject.toml` só valem no app empacotado. Daí a subpasta: ela garante que o
+caderno tenha um canto próprio nos dois casos.
+
+Isso não é preferência de arrumação. A pasta Documentos do Windows pode estar
+redirecionada para o OneDrive, e a **Proteção contra Ransomware** (Acesso
+Controlado a Pastas) bloqueia a escrita ali. O detalhe cruel é que o bloqueio
+chega ao Python como `[Errno 2] No such file or directory` em vez de permissão
+negada — quem lê a mensagem vai procurar um arquivo que falta, não uma permissão.
+Foi o que derrubava a conversa no fim do streaming.
+
+As fontes de contexto são **somente leitura**: o NotebookGPT lê o `.txt` que você
+anexa e nunca escreve nele nem o move. `tests/core/test_sources.py` fixa isso
+comparando conteúdo e `mtime` antes e depois da leitura.
+
+E se a gravação falhar de todo modo — disco cheio, antivírus, permissão — a
+conversa continua na tela e um aviso aparece uma vez. O caderno é o registro, não
+a conversa.

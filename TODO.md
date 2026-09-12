@@ -35,3 +35,14 @@ contexto. O que falta é o que ficou deliberadamente de fora dele.
       `src/`) e instala só as dependências do próprio `pyproject.toml`, o que não
       alcança `notebookgpt-core` nem `notebookgpt-inference`. O caminho suportado
       é `uv run notebookgpt`.
+
+## Persistência, pontas soltas
+
+- [ ] Migrar um `notebookgpt.txt` gravado por versões antigas na pasta Documentos.
+      Nesta máquina o arquivo nunca chegou a existir (a escrita era bloqueada), então
+      não há o que mover e a migração seria código morto — mas quem rodou uma versão
+      antiga em outra máquina tem um caderno preso lá. A leitura daquela pasta não é
+      bloqueada; só a escrita.
+- [ ] Distinguir "o caderno não existe" de "existe e não abre" em `load_notebook`.
+      Hoje os dois casos devolvem um caderno vazio em silêncio, e foi esse silêncio
+      que escondeu o bug da pasta protegida por um tempo.
