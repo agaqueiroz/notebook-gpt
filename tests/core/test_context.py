@@ -2,6 +2,7 @@ from notebookgpt_core.context import (
     HISTORY_TURNS,
     NO_SOURCES_NOTE,
     PER_SOURCE_CHARS,
+    SYSTEM_PROMPT,
     TOTAL_SOURCE_CHARS,
     TRUNCATION_MARK,
     build_messages,
@@ -10,17 +11,30 @@ from notebookgpt_core.context import (
 from notebookgpt_core.models import Message, NotebookData, Source
 
 
-def test_the_prompt_is_always_the_last_message():
+def test_only_the_instructions_go_in_system():
     request = build_messages(NotebookData(), "qual a capital?")
 
-    assert request[-1] == Message(role="user", content="qual a capital?")
-    assert request[0].role == "system"
+    assert request[0] == Message(role="system", content=SYSTEM_PROMPT)
+    assert [message.role for message in request].count("system") == 1
+
+
+def test_the_sources_travel_with_the_prompt_in_the_last_user_turn():
+    # Medido contra o llama-3.2-1b: fontes em `system` sao ignoradas pelo modelo.
+    # Este teste e o que impede a regressao de voltar a coloca-las la.
+    notebook = NotebookData(sources=[Source(name="receita.txt", content="bata as claras")])
+
+    request = build_messages(notebook, "qual a capital?")
+
+    assert request[-1].role == "user"
+    assert "qual a capital?" in request[-1].content
+    assert "receita.txt" in request[-1].content
+    assert "bata as claras" in request[-1].content
 
 
 def test_without_sources_the_model_is_told_so():
     request = build_messages(NotebookData(), "oi")
 
-    assert NO_SOURCES_NOTE in request[1].content
+    assert NO_SOURCES_NOTE in request[-1].content
 
 
 def test_source_names_and_content_reach_the_model():
@@ -64,3 +78,5 @@ def test_only_the_most_recent_turns_are_replayed():
     replayed = [message for message in request if message.role != "system"][:-1]
     assert len(replayed) == HISTORY_TURNS
     assert replayed[-1].content == history[-1].content
+    # O historico entra cru: as fontes so acompanham o turno atual.
+    assert all("Fontes anexadas" not in message.content for message in replayed)

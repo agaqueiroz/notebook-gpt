@@ -45,14 +45,23 @@ class LocalInferenceClient:
             stream = await self._client.chat.completions.create(
                 model=self.settings.model,
                 messages=[asdict(message) for message in messages],
+                temperature=self.settings.temperature,
                 stream=True,
             )
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if delta is not None and delta.content:
-                    yield delta.content
+            # Fechar explicitamente: sem isso a conexao SSE fica pendurada e o
+            # loop de eventos reclama ao coletar o gerador ("generator didn't
+            # stop after athrow()"). Nem todo dublê de teste tem `close`.
+            closer = getattr(stream, "close", None)
+            try:
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    if delta is not None and delta.content:
+                        yield delta.content
+            finally:
+                if closer is not None:
+                    await closer()
         except openai.AuthenticationError as error:
             raise InferenceError(
                 f"{self.settings.host} recusou a chave. Confira NOTEBOOKGPT_API_KEY no seu .env."
@@ -69,3 +78,20 @@ class LocalInferenceClient:
     async def reply(self, messages: Sequence[Message]) -> str:
         """A resposta inteira, para quem nao precisa de streaming."""
         return "".join([chunk async for chunk in self.stream_reply(messages)])
+
+    async def aclose(self) -> None:
+        """Fecha o pool de conexoes.
+
+        Sem isso, o pool sobrevive ao fim do loop de eventos e o Python reclama ao
+        coletar os geradores da httpx. Na interface o cliente vive o tempo do
+        aplicativo; em script e teste, use o `async with`.
+        """
+        closer = getattr(self._client, "close", None)
+        if closer is not None:
+            await closer()
+
+    async def __aenter__(self) -> LocalInferenceClient:
+        return self
+
+    async def __aexit__(self, *_) -> None:
+        await self.aclose()

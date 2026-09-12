@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_BASE_URL = "http://serv04.local:8000/v1"
 DEFAULT_MODEL = "llama-3.2-1b"
 DEFAULT_TIMEOUT = 120.0
+# Zero por padrao: a tarefa e responder a partir de uma fonte anexada, nao
+# inventar. Tambem torna a resposta reproduzivel, o que os testes de rede usam.
+DEFAULT_TEMPERATURE = 0.0
 
 
 @dataclass(frozen=True)
@@ -20,22 +23,29 @@ class InferenceSettings:
     """
 
     base_url: str = DEFAULT_BASE_URL
-    api_key: str = ""
+    # Fora do repr: sem isso a chave vaza no output do pytest, em traceback e
+    # em qualquer log que imprima as configuracoes.
+    api_key: str = field(default="", repr=False)
     model: str = DEFAULT_MODEL
     timeout: float = DEFAULT_TIMEOUT
+    temperature: float = DEFAULT_TEMPERATURE
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> InferenceSettings:
         env = os.environ if env is None else env
-        try:
-            timeout = float(env.get("NOTEBOOKGPT_TIMEOUT", DEFAULT_TIMEOUT))
-        except ValueError:
-            timeout = DEFAULT_TIMEOUT
+
+        def number(name: str, default: float) -> float:
+            try:
+                return float(env.get(name, default))
+            except ValueError:
+                return default
+
         return cls(
             base_url=env.get("NOTEBOOKGPT_BASE_URL") or DEFAULT_BASE_URL,
             api_key=env.get("NOTEBOOKGPT_API_KEY", ""),
             model=env.get("NOTEBOOKGPT_MODEL") or DEFAULT_MODEL,
-            timeout=timeout,
+            timeout=number("NOTEBOOKGPT_TIMEOUT", DEFAULT_TIMEOUT),
+            temperature=number("NOTEBOOKGPT_TEMPERATURE", DEFAULT_TEMPERATURE),
         )
 
     @property

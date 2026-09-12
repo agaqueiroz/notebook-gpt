@@ -32,18 +32,36 @@ def NotebookWorkspace(
     left_visible, set_left_visible = ft.use_state(True)
     right_visible, set_right_visible = ft.use_state(True)
 
-    async def save_state(
-        next_sources: list[Source] = sources,
-        next_messages: list[Message] = messages,
-        next_notes: str = notes,
-    ) -> None:
-        await persist(
-            NotebookData(
-                sources=next_sources,
-                messages=next_messages,
-                notes=next_notes,
-            )
+    # O ref guarda a versão gravável do caderno e sobrevive às renderizações.
+    # Sem ele, cada handler fecharia sobre o estado da renderização em que foi
+    # criado: uma anotação escrita durante o streaming, por exemplo, era
+    # sobrescrita pelo `persist` do fim da resposta.
+    # Divisão: os `use_state` desenham a tela, o ref é o que vai para o disco.
+    stored = ft.use_ref(
+        lambda: NotebookData(
+            sources=initial_data.sources,
+            messages=initial_data.messages,
+            notes=initial_data.notes,
         )
+    )
+
+    async def commit(
+        next_sources: list[Source] | None = None,
+        next_messages: list[Message] | None = None,
+        next_notes: str | None = None,
+    ) -> None:
+        """Aplica a mudança no estado da tela e no caderno, e grava."""
+        notebook = stored.current
+        if next_sources is not None:
+            notebook.sources = next_sources
+            set_sources(next_sources)
+        if next_messages is not None:
+            notebook.messages = next_messages
+            set_messages(next_messages)
+        if next_notes is not None:
+            notebook.notes = next_notes
+            set_notes(next_notes)
+        await persist(notebook)
 
     def warn(text: str) -> None:
         page.show_dialog(ft.SnackBar(content=ft.Text(text)))
@@ -58,10 +76,15 @@ def NotebookWorkspace(
             # funciona no modo web, onde `path` é sempre None.
             with_data=True,
         )
-        known = {source.name for source in sources}
+        current = stored.current.sources
+        known = {source.name for source in current}
         added: list[Source] = []
         for file in selected:
-            if file.name in known or file.bytes is None:
+            if file.name in known:
+                warn(f"'{file.name}' já está na lista de fontes.")
+                continue
+            if file.bytes is None:
+                warn(f"Não foi possível ler o conteúdo de '{file.name}'.")
                 continue
             try:
                 added.append(source_from_bytes(file.name, file.bytes))
@@ -69,18 +92,12 @@ def NotebookWorkspace(
             except UnsupportedSourceError as error:
                 warn(str(error))
 
-        if not added:
-            return
-
-        next_sources = sources + added
-        set_sources(next_sources)
-        await save_state(next_sources=next_sources)
+        if added:
+            await commit(next_sources=current + added)
 
     def remove_handler(name: str):
         async def remove_source(_):
-            next_sources = [source for source in sources if source.name != name]
-            set_sources(next_sources)
-            await save_state(next_sources=next_sources)
+            await commit(next_sources=[s for s in stored.current.sources if s.name != name])
 
         return remove_source
 
@@ -89,8 +106,9 @@ def NotebookWorkspace(
         if not clean_prompt or sending:
             return
 
-        history = [*messages, Message(role="user", content=clean_prompt)]
-        request = build_messages(NotebookData(sources=sources, messages=messages), clean_prompt)
+        notebook = stored.current
+        history = [*notebook.messages, Message(role="user", content=clean_prompt)]
+        request = build_messages(notebook, clean_prompt)
 
         set_prompt("")
         set_sending(True)
@@ -110,18 +128,14 @@ def NotebookWorkspace(
         if not answer:
             answer = "_O servidor respondeu sem conteúdo._"
 
-        next_messages = [*history, Message(role="assistant", content=answer)]
-        set_messages(next_messages)
         set_sending(False)
-        await save_state(next_messages=next_messages)
+        await commit(next_messages=[*history, Message(role="assistant", content=answer)])
 
     def change_prompt(event):
         set_prompt(event.control.value)
 
     async def change_notes(event):
-        next_notes = event.control.value
-        set_notes(next_notes)
-        await save_state(next_notes=next_notes)
+        await commit(next_notes=event.control.value)
 
     def copy_handler(markdown: str):
         async def copy_answer(_):

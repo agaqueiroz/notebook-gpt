@@ -6,6 +6,8 @@
       "runtimeExecutable": "uv",
       "runtimeArgs": [
         "run",
+        "--env-file",
+        ".env",
         "flet",
         "run",
         "--web",

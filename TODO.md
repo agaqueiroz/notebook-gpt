@@ -26,3 +26,12 @@ contexto. O que falta é o que ficou deliberadamente de fora dele.
 - [ ] O conteúdo das fontes é gravado junto do caderno — é o que faz elas sobreviverem
       a um reinício no modo web. Migrar para SQLite quando houver múltiplos cadernos,
       busca ou anexos grandes.
+
+## Empacotamento
+
+- [ ] Ligar `flet build` ao layout do monorepo. Hoje ele não funciona: espera o
+      módulo de entrada na raiz do diretório do app (`tool.flet.app.path` +
+      `tool.flet.app.module`, que resolvem para um arquivo, não para um pacote
+      `src/`) e instala só as dependências do próprio `pyproject.toml`, o que não
+      alcança `notebookgpt-core` nem `notebookgpt-inference`. O caminho suportado
+      é `uv run notebookgpt`.

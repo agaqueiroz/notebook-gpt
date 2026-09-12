@@ -24,11 +24,15 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "notebookgpt_ui"
 
+# Metadados lidos por `flet build`. O empacotamento em si ainda nao esta ligado
+# ao layout do monorepo: `flet build` espera achar o modulo de entrada na raiz do
+# diretorio do app (tool.flet.app.path + tool.flet.app.module) e instalar as
+# dependencias do proprio pyproject, o que nao alcanca os membros do workspace.
+# Por enquanto o caminho suportado e `uv run notebookgpt`; ver TODO.md.
 [tool.flet]
 org = "dev.flet"
 company = "André Queiroz"
 copyright = "Copyright (C) 2026 by André Queiroz"
-app_module = "notebookgpt_ui.app"
 
 [tool.flet.metadata]
 title = "NotebookGPT"

@@ -7,7 +7,7 @@ from notebookgpt_core.models import Message
 from notebookgpt_inference.client import InferenceError, LocalInferenceClient
 from notebookgpt_inference.settings import InferenceSettings
 
-SETTINGS = InferenceSettings(base_url="http://serv04.local:8000/v1", api_key="k", model="llama-3.2-1b")
+SETTINGS = InferenceSettings(base_url="http://serv04.local:8000/v1", api_key="k", model="llama-3.2-1b", temperature=0.0)
 
 
 def chunk(content: str | None):
@@ -60,6 +60,7 @@ async def test_the_request_carries_the_model_streaming_and_the_messages():
     call = completions.calls[0]
     assert call["model"] == "llama-3.2-1b"
     assert call["stream"] is True
+    assert call["temperature"] == 0.0
     assert call["messages"] == [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
 
 
@@ -85,3 +86,18 @@ async def test_sdk_failures_become_an_inference_error_in_portuguese(error, expec
 
     with pytest.raises(InferenceError, match=expected):
         await client.reply([Message(role="user", content="oi")])
+
+
+def test_the_api_key_never_shows_up_in_the_settings_repr():
+    # Um traceback de pytest imprime as fixtures; a chave nao pode ir junto.
+    settings = InferenceSettings(api_key="chave-secreta-de-verdade")
+
+    assert "chave-secreta-de-verdade" not in repr(settings)
+    assert "serv04.local" in repr(settings)
+
+
+def test_numeric_settings_fall_back_when_the_environment_is_garbage():
+    settings = InferenceSettings.from_env({"NOTEBOOKGPT_TIMEOUT": "nao e numero", "NOTEBOOKGPT_TEMPERATURE": ""})
+
+    assert settings.timeout == 120.0
+    assert settings.temperature == 0.0
