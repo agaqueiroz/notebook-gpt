@@ -5,7 +5,7 @@ import random
 
 import pytest
 from notebookgpt_core import Source
-from notebookgpt_index import EMBEDDING_DIMS, Indexer, VectorIndex
+from notebookgpt_index import EMBEDDING_DIMS, DimensionMismatchError, Indexer, VectorIndex
 from notebookgpt_inference import InferenceSettings
 
 GRANDE = "Frase de tamanho razoavel sobre previdencia social brasileira. " * 60
@@ -21,6 +21,7 @@ class FakeEmbedder:
     def __init__(self, settings: InferenceSettings | None = None, max_inputs: int = 64):
         self.settings = settings or InferenceSettings()
         self.max_inputs = max_inputs
+        self.dimensions = EMBEDDING_DIMS
         self.batches: list[list[str]] = []
 
     @property
@@ -42,7 +43,7 @@ class FakeEmbedder:
             self.batches.append(batch)
             for text in batch:
                 rng = random.Random(text)
-                values = [rng.gauss(0, 1) for _ in range(EMBEDDING_DIMS)]
+                values = [rng.gauss(0, 1) for _ in range(self.dimensions)]
                 norm = math.sqrt(sum(value * value for value in values))
                 vectors.append([value / norm for value in values])
         return vectors
@@ -155,6 +156,71 @@ async def test_a_budget_smaller_than_any_chunk_still_returns_something(indexer):
 
     assert len(recuperados) == 1
     assert len(recuperados[0].content) <= 50
+
+
+async def test_sync_records_the_encoding_metrics(indexer):
+    assert indexer.last_encoding is None
+
+    await indexer.sync([Source(name="a.txt", content=GRANDE)])
+    metricas = indexer.last_encoding
+
+    assert metricas.model == indexer.client.settings.embedding_model
+    assert metricas.dimensions == EMBEDDING_DIMS
+    assert metricas.sources_encoded == 1
+    assert metricas.chunks_encoded == len(indexer.client.embedded) == indexer.store.count()
+    assert metricas.chars_encoded > 0
+    assert metricas.indexed_sources == 1
+    assert metricas.indexed_chunks == indexer.store.count()
+
+
+async def test_a_sync_with_nothing_new_reports_zero_encoded_but_keeps_the_index_totals(indexer):
+    fontes = [Source(name="a.txt", content=GRANDE)]
+    await indexer.sync(fontes)
+
+    await indexer.sync(fontes)
+    metricas = indexer.last_encoding
+
+    assert (metricas.sources_encoded, metricas.chunks_encoded, metricas.seconds) == (0, 0, 0.0)
+    assert metricas.chunks_per_second == 0.0
+    assert metricas.indexed_chunks == indexer.store.count() > 0
+
+
+async def test_a_server_that_changes_the_vector_size_rebuilds_the_index(indexer):
+    # O caso real: pedindo o e5 (384), o serv04 passou a responder com o
+    # qwen3-embedding (1024) sob o mesmo nome. Antes isso derrubava o aplicativo.
+    fontes = [Source(name="a.txt", content=GRANDE), Source(name="b.txt", content=GRANDE * 2)]
+    await indexer.sync(fontes)
+    assert indexer.store.dimensions == EMBEDDING_DIMS
+
+    indexer.client.dimensions = 1024
+    await indexer.sync([*fontes, Source(name="c.txt", content=GRANDE * 3)])
+
+    assert indexer.store.dimensions == 1024
+    assert set(indexer.store.indexed()) == {"a.txt", "b.txt", "c.txt"}
+    assert indexer.last_encoding.rebuilt
+    assert indexer.last_encoding.sources_encoded == 3
+    assert await indexer.retrieve("qualquer coisa")
+
+
+async def test_changing_the_configured_model_rebuilds_the_index(indexer):
+    fontes = [Source(name="a.txt", content=GRANDE)]
+    await indexer.sync(fontes)
+    antes = indexer.client.calls
+
+    indexer.client.settings = InferenceSettings(embedding_model="outro-modelo")
+    reindexadas = await indexer.sync(fontes)
+
+    assert reindexadas == 1
+    assert indexer.client.calls > antes
+    assert indexer.store.embedding_model == "outro-modelo"
+
+
+async def test_a_question_embedded_by_another_model_is_refused_clearly(indexer):
+    await indexer.sync([Source(name="a.txt", content=GRANDE)])
+    indexer.client.dimensions = 1024
+
+    with pytest.raises(DimensionMismatchError):
+        await indexer.retrieve("qualquer coisa")
 
 
 async def test_an_empty_source_is_recorded_and_not_retried(indexer):
