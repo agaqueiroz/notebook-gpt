@@ -9,13 +9,13 @@ import random
 
 import pytest
 from notebookgpt_core import Chunk
-from notebookgpt_index import EMBEDDING_DIMS, VectorIndex
+from notebookgpt_index import EMBEDDING_DIMS, DimensionMismatchError, VectorIndex
 
 
-def unit(seed: int) -> list[float]:
+def unit(seed: int, dims: int = EMBEDDING_DIMS) -> list[float]:
     """Um vetor unitario reproduzivel -- como os que o servidor devolve."""
     rng = random.Random(seed)
-    values = [rng.gauss(0, 1) for _ in range(EMBEDDING_DIMS)]
+    values = [rng.gauss(0, 1) for _ in range(dims)]
     norm = math.sqrt(sum(value * value for value in values))
     return [value / norm for value in values]
 
@@ -106,6 +106,54 @@ def test_asking_for_no_neighbours_returns_nothing(index):
     index.replace_source("a.txt", "sha-1", chunks_of("a.txt", 3), [unit(i) for i in range(3)])
 
     assert index.search(unit(0), 0) == []
+
+
+def test_the_table_takes_the_size_of_the_first_vectors(index):
+    assert index.dimensions is None
+
+    index.replace_source("a.txt", "sha-1", chunks_of("a.txt", 2), [unit(0, 1024), unit(1, 1024)])
+
+    assert index.dimensions == 1024
+    assert index.search(unit(0, 1024), 1)[0][0].ordinal == 1
+
+
+def test_a_vector_of_another_size_is_refused_without_touching_the_index(index):
+    index.replace_source("a.txt", "sha-1", chunks_of("a.txt", 3), [unit(i) for i in range(3)])
+
+    with pytest.raises(DimensionMismatchError):
+        index.replace_source("a.txt", "sha-2", chunks_of("a.txt", 1), [unit(0, 1024)])
+    with pytest.raises(DimensionMismatchError):
+        index.search(unit(0, 1024), 1)
+
+    assert index.indexed() == {"a.txt": "sha-1"}
+    assert index.count() == 3
+
+
+def test_reset_empties_the_index_and_accepts_a_new_size(index):
+    index.replace_source("a.txt", "sha-1", chunks_of("a.txt", 3), [unit(i) for i in range(3)])
+
+    index.reset("qwen3-embedding-0.6b")
+    index.replace_source("a.txt", "sha-1", chunks_of("a.txt", 2), [unit(0, 1024), unit(1, 1024)])
+
+    assert (index.embedding_model, index.dimensions, index.count()) == ("qwen3-embedding-0.6b", 1024, 2)
+
+
+def test_an_index_from_before_the_metadata_keeps_its_size(tmp_path):
+    # Um `index.db` antigo: tabela de 384 dimensoes criada a mao, sem `meta`.
+    import sqlite3
+
+    import sqlite_vec
+
+    path = tmp_path / "index.db"
+    db = sqlite3.connect(path)
+    db.enable_load_extension(True)
+    sqlite_vec.load(db)
+    db.execute(f"CREATE VIRTUAL TABLE chunks USING vec0(embedding float[{EMBEDDING_DIMS}], source_name text)")
+    db.close()
+
+    with VectorIndex(path) as antigo:
+        assert antigo.dimensions == EMBEDDING_DIMS
+        assert antigo.embedding_model is None
 
 
 def test_the_index_survives_being_reopened(tmp_path):

@@ -31,16 +31,16 @@ def NotebookWorkspace(
 ):
     sources, set_sources = ft.use_state(initial_data.sources)
     messages, set_messages = ft.use_state(initial_data.messages)
-    notes, set_notes = ft.use_state(initial_data.notes)
     prompt, set_prompt = ft.use_state("")
     sending, set_sending = ft.use_state(False)
     indexing, set_indexing = ft.use_state(False)
+    encoding, set_encoding = ft.use_state(indexer.last_encoding)
     left_visible, set_left_visible = ft.use_state(True)
     right_visible, set_right_visible = ft.use_state(True)
 
     # O ref guarda a versão gravável do caderno e sobrevive às renderizações.
     # Sem ele, cada handler fecharia sobre o estado da renderização em que foi
-    # criado: uma anotação escrita durante o streaming, por exemplo, era
+    # criado: uma fonte anexada durante o streaming, por exemplo, seria
     # sobrescrita pelo `persist` do fim da resposta.
     # Divisão: os `use_state` desenham a tela, o ref é o que vai para o disco.
     stored = ft.use_ref(
@@ -51,8 +51,8 @@ def NotebookWorkspace(
         )
     )
 
-    # Uma falha de gravação avisa uma vez e cala. `change_notes` dispara a cada
-    # tecla: com o disco barrado, seriam dezenas de SnackBar idênticos.
+    # Uma falha de gravação avisa uma vez e cala: com o disco barrado, cada
+    # resposta e cada fonte anexada repetiriam o mesmo SnackBar.
     storage_warned = ft.use_ref(False)
     # Idem para o indice: sem ele a conversa segue com o contexto truncado, e
     # repetir o aviso a cada pergunta so atrapalharia.
@@ -61,7 +61,6 @@ def NotebookWorkspace(
     async def commit(
         next_sources: list[Source] | None = None,
         next_messages: list[Message] | None = None,
-        next_notes: str | None = None,
     ) -> None:
         """Aplica a mudança no estado da tela e no caderno, e grava.
 
@@ -76,9 +75,6 @@ def NotebookWorkspace(
         if next_messages is not None:
             notebook.messages = next_messages
             set_messages(next_messages)
-        if next_notes is not None:
-            notebook.notes = next_notes
-            set_notes(next_notes)
 
         try:
             await persist(notebook)
@@ -152,6 +148,7 @@ def NotebookWorkspace(
         set_indexing(True)
         try:
             await indexer.sync(stored.current.sources)
+            set_encoding(indexer.last_encoding)
         except (InferenceError, VectorIndexError) as error:
             if not index_warned.current:
                 index_warned.current = True
@@ -231,9 +228,6 @@ def NotebookWorkspace(
 
     def change_prompt(event):
         set_prompt(event.control.value)
-
-    async def change_notes(event):
-        await commit(next_notes=event.control.value)
 
     def copy_handler(markdown: str):
         async def copy_answer(_):
@@ -400,23 +394,39 @@ def NotebookWorkspace(
         ],
     )
 
+    def metric_row(label: str, value: str) -> ft.Control:
+        return ft.Row(
+            controls=[ft.Text(label, size=12, expand=True), ft.Text(value, size=12, weight=ft.FontWeight.BOLD)],
+        )
+
+    def encoding_metrics() -> list[ft.Control]:
+        if encoding is None:
+            return [ft.Text("Nenhum encoding nesta sessão.", size=12)]
+
+        return [
+            metric_row("Modelo", encoding.model),
+            metric_row("Dimensões", str(encoding.dimensions) if encoding.dimensions else "—"),
+            ft.Divider(),
+            ft.Text("Última sincronização", size=11),
+            *([ft.Text("Índice refeito: o modelo de embedding mudou.", size=11)] if encoding.rebuilt else []),
+            metric_row("Fontes codificadas", str(encoding.sources_encoded)),
+            metric_row("Trechos codificados", str(encoding.chunks_encoded)),
+            metric_row("Caracteres", f"{encoding.chars_encoded:,}".replace(",", ".")),
+            metric_row("Média por trecho", f"{encoding.chars_per_chunk:.0f} car."),
+            metric_row("Tempo de embedding", f"{encoding.seconds:.2f} s"),
+            metric_row("Vazão", f"{encoding.chunks_per_second:.1f} trechos/s"),
+            ft.Divider(),
+            ft.Text("Índice", size=11),
+            metric_row("Fontes indexadas", str(encoding.indexed_sources)),
+            metric_row("Trechos indexados", str(encoding.indexed_chunks)),
+        ]
+
     notes_panel = ft.Container(
         width=300,
         padding=12,
         bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
         content=ft.Column(
-            controls=[
-                ft.Text("Anotações"),
-                ft.TextField(
-                    value=notes,
-                    hint_text="Escreva suas anotações aqui",
-                    multiline=True,
-                    min_lines=8,
-                    max_lines=20,
-                    expand=True,
-                    on_change=change_notes,
-                ),
-            ],
+            controls=[ft.Text("Métricas do embedding"), *encoding_metrics()],
             expand=True,
         ),
     )
@@ -437,7 +447,7 @@ def NotebookWorkspace(
                     ft.IconButton(
                         icon=ft.Icons.SETTINGS,
                         on_click=lambda _: set_right_visible(not right_visible),
-                        tooltip="Mostrar ou ocultar anotações",
+                        tooltip="Mostrar ou ocultar métricas do embedding",
                     )
                 ],
             ),

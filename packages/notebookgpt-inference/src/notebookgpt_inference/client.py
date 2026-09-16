@@ -72,6 +72,9 @@ class LocalInferenceClient:
     def __init__(self, settings: InferenceSettings | None = None, client: AsyncOpenAI | None = None):
         self.settings = settings or InferenceSettings.from_env()
         self._client = client or _build_client(self.settings)
+        # O modelo que o servidor declarou na ultima resposta de embedding. Pode
+        # nao ser o pedido: o serv04 responde com o que tiver carregado.
+        self.served_embedding_model: str | None = None
 
     async def stream_reply(self, messages: Sequence[Message]) -> AsyncIterator[str]:
         """Emite a resposta em pedacos, na ordem em que o servidor os manda."""
@@ -154,6 +157,7 @@ class LocalInferenceClient:
             # na ordem de entrada, e um desalinhamento aqui associaria o vetor de um
             # trecho ao texto de outro -- um bug silencioso e dificil de ver.
             vectors.extend(item.embedding for item in sorted(answer.data, key=lambda item: item.index))
+            self.served_embedding_model = getattr(answer, "model", None) or self.served_embedding_model
 
         return vectors
 
