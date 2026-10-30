@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import cast
 
 import httpx2 as httpx
 import openai
@@ -37,7 +38,7 @@ class FakeCompletions:
 def fake_client(**kwargs):
     completions = FakeCompletions(**kwargs)
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
-    return LocalInferenceClient(SETTINGS, client=client), completions
+    return LocalInferenceClient(SETTINGS, client=cast(openai.AsyncOpenAI, client)), completions
 
 
 class FakeEmbeddings:
@@ -63,7 +64,7 @@ class FakeEmbeddings:
 def fake_client_with_embeddings(*, count: int = 0, shuffle: bool = False, error: Exception | None = None):
     embeddings = FakeEmbeddings(error=error, shuffle=shuffle)
     stub = SimpleNamespace(embeddings=embeddings)
-    return LocalInferenceClient(SETTINGS, client=stub), embeddings
+    return LocalInferenceClient(SETTINGS, client=cast(openai.AsyncOpenAI, stub)), embeddings
 
 
 async def test_deltas_are_concatenated_in_order():

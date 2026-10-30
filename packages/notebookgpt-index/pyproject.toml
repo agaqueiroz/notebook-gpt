@@ -10,7 +10,6 @@ authors = [
 ]
 dependencies = [
     "notebookgpt-core",
-    "notebookgpt-inference",
     # Tabela virtual vec0 sobre o sqlite3 da stdlib: KNN em SQL, um arquivo, sem
     # servidor. Wheel py3-none-win_amd64, nada a compilar.
     "sqlite-vec>=0.1.9",

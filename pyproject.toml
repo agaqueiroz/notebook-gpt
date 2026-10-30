@@ -24,6 +24,8 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
+    "import-linter>=2.15",
+    "basedpyright>=1.40",
     "httpx2>=2.0",   # usado pelos testes para fabricar erros do SDK da OpenAI
     "flet-cli",
     "flet-desktop",
@@ -41,7 +43,50 @@ line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF", "TID", "PTH", "LOG", "G"]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF", "TID", "PTH", "LOG", "G", "PL", "C90", "SLF"]
 ignore = [
     "SIM108",  # ternarios nao sao sempre mais claros que um if/else
+    "PLR2004",  # numeros magicos: ruido demais para o que aponta
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["SLF001"]  # testes podem inspecionar o estado interno
+
+[tool.basedpyright]
+include = ["packages", "tests"]
+typeCheckingMode = "standard"
+
+[tool.importlinter]
+root_packages = ["notebookgpt_core", "notebookgpt_index", "notebookgpt_inference", "notebookgpt_ui"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Camadas do workspace"
+type = "layers"
+layers = ["notebookgpt_ui", "notebookgpt_index | notebookgpt_inference", "notebookgpt_core"]
+
+[[tool.importlinter.contracts]]
+name = "Core nao depende de bibliotecas de infraestrutura"
+type = "forbidden"
+source_modules = ["notebookgpt_core"]
+forbidden_modules = ["flet", "openai", "sqlite_vec", "dotenv"]
+
+[[tool.importlinter.contracts]]
+name = "Flet e dotenv ficam na UI"
+type = "forbidden"
+source_modules = ["notebookgpt_index", "notebookgpt_inference"]
+forbidden_modules = ["flet", "dotenv"]
+
+[[tool.importlinter.contracts]]
+name = "OpenAI fica em inference"
+type = "forbidden"
+source_modules = ["notebookgpt_index", "notebookgpt_ui"]
+forbidden_modules = ["openai"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "sqlite-vec fica em index"
+type = "forbidden"
+source_modules = ["notebookgpt_inference", "notebookgpt_ui"]
+forbidden_modules = ["sqlite_vec"]
+allow_indirect_imports = true

@@ -21,7 +21,7 @@ Persist = Callable[[NotebookData], Awaitable[None]]
 
 
 @ft.component
-def NotebookWorkspace(
+def NotebookWorkspace(  # noqa: C901, PLR0913, PLR0915, PLR0917 -- componente unico; dividi-lo e outro trabalho
     page: ft.Page,
     picker: ft.FilePicker,
     client: LocalInferenceClient,
@@ -50,6 +50,9 @@ def NotebookWorkspace(
             notes=initial_data.notes,
         )
     )
+    # O ref nunca é reatribuído: os handlers mutam sempre este mesmo objeto.
+    notebook = stored.current
+    assert notebook is not None
 
     # Uma falha de gravação avisa uma vez e cala: com o disco barrado, cada
     # resposta e cada fonte anexada repetiriam o mesmo SnackBar.
@@ -68,7 +71,6 @@ def NotebookWorkspace(
         uma resposta que acabou de chegar continua visível mesmo se o disco
         recusar a escrita. Perder a conversa por causa do arquivo não é opção.
         """
-        notebook = stored.current
         if next_sources is not None:
             notebook.sources = next_sources
             set_sources(next_sources)
@@ -96,7 +98,7 @@ def NotebookWorkspace(
             # funciona no modo web, onde `path` é sempre None.
             with_data=True,
         )
-        current = stored.current.sources
+        current = notebook.sources
         known = {source.name for source in current}
         added: list[Source] = []
         for file in selected:
@@ -118,7 +120,7 @@ def NotebookWorkspace(
 
     def remove_handler(name: str):
         async def remove_source(_):
-            await commit(next_sources=[s for s in stored.current.sources if s.name != name])
+            await commit(next_sources=[s for s in notebook.sources if s.name != name])
             await reindex()
 
         return remove_source
@@ -147,7 +149,7 @@ def NotebookWorkspace(
         pending_index.current = False
         set_indexing(True)
         try:
-            await indexer.sync(stored.current.sources)
+            await indexer.sync(notebook.sources)
             set_encoding(indexer.last_encoding)
         except (InferenceError, VectorIndexError) as error:
             if not index_warned.current:
@@ -173,7 +175,7 @@ def NotebookWorkspace(
         Cabendo as fontes inteiras no orçamento, recuperar só subtrai: os trechos
         descartados teriam cabido de qualquer jeito.
         """
-        if fits_whole(stored.current.sources):
+        if fits_whole(notebook.sources):
             return None
         try:
             passages = await indexer.retrieve(question)
@@ -192,7 +194,6 @@ def NotebookWorkspace(
         if not clean_prompt or sending:
             return
 
-        notebook = stored.current
         history = [*notebook.messages, Message(role="user", content=clean_prompt)]
 
         set_prompt("")
@@ -431,9 +432,16 @@ def NotebookWorkspace(
         ),
     )
 
+    panels: list[ft.Control] = [
+        *([source_panel] if left_visible else []),
+        conversation,
+        *([notes_panel] if right_visible else []),
+    ]
+
     return ft.Column(
         expand=True,
-        controls=[
+        # Nos tipos do Flet, AppBar nao herda de Control; aqui ele e filho direto da coluna.
+        controls=[  # pyright: ignore[reportArgumentType]
             ft.AppBar(
                 bgcolor=ft.Colors.SURFACE_CONTAINER,
                 leading=ft.IconButton(
@@ -453,9 +461,7 @@ def NotebookWorkspace(
             ),
             ft.Row(
                 expand=True,
-                controls=(
-                    ([source_panel] if left_visible else []) + [conversation] + ([notes_panel] if right_visible else [])
-                ),
+                controls=panels,
             ),
         ],
     )

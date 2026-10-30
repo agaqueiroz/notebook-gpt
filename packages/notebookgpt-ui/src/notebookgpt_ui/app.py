@@ -31,7 +31,8 @@ async def main(page: ft.Page):
         # Navegadores não expõem um diretório de documentos ao aplicativo.
         # `page.platform` não serve para essa decisão: no navegador ele traz o
         # sistema operacional do visitante, não a ausência de plataforma.
-        initial_data = notebook_from_text(await preferences.get(NOTEBOOK_FILENAME))
+        saved = await preferences.get(NOTEBOOK_FILENAME)
+        initial_data = notebook_from_text(saved if isinstance(saved, str) else None)
         # Sem disco, o indice vive em memoria e e reconstruido a cada sessao.
         index_path = None
 

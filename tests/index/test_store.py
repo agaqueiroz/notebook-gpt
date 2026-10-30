@@ -6,8 +6,10 @@ das fontes, nao a qualidade dos embeddings.
 
 import math
 import random
+import sqlite3
 
 import pytest
+import sqlite_vec
 from notebookgpt_core import Chunk
 from notebookgpt_index import EMBEDDING_DIMS, DimensionMismatchError, VectorIndex
 
@@ -140,10 +142,6 @@ def test_reset_empties_the_index_and_accepts_a_new_size(index):
 
 def test_an_index_from_before_the_metadata_keeps_its_size(tmp_path):
     # Um `index.db` antigo: tabela de 384 dimensoes criada a mao, sem `meta`.
-    import sqlite3
-
-    import sqlite_vec
-
     path = tmp_path / "index.db"
     db = sqlite3.connect(path)
     db.enable_load_extension(True)

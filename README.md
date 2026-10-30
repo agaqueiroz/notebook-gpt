@@ -55,19 +55,29 @@ curl -s http://serv04.local:8000/health
 ## O monorepo
 
 Um workspace [uv](https://docs.astral.sh/uv/concepts/projects/workspaces/) com um
-`.venv` e um `uv.lock` na raiz, e três membros em `packages/`:
+`.venv` e um `uv.lock` na raiz, e quatro membros em `packages/`:
 
 | Pacote | Responsabilidade | Depende de |
 | --- | --- | --- |
 | `notebookgpt-core` | Caderno, fontes TXT, persistência, pedaços e montagem do contexto | biblioteca padrão |
 | `notebookgpt-inference` | Cliente do servidor local: streaming, embeddings e tradução de erros | `core`, `openai` |
-| `notebookgpt-index` | Banco vetorial embutido e recuperação dos trechos | `core`, `inference`, `sqlite-vec` |
+| `notebookgpt-index` | Banco vetorial embutido e recuperação dos trechos | `core`, `sqlite-vec` |
 | `notebookgpt-ui` | Interface Flet (o pacote original deste repositório) | os três acima, `flet` |
 
-A direção é sempre `ui → index → inference → core`. O domínio não conhece rede nem
-interface, e o cliente de inferência não conhece a interface — é o que permite
-testar a montagem do contexto e o streaming sem abrir uma janela.
-[tests/test_layers.py](tests/test_layers.py) verifica isso no código-fonte.
+```mermaid
+graph TD
+    ui[notebookgpt_ui] --> index[notebookgpt_index]
+    ui --> inference[notebookgpt_inference]
+    ui --> core[notebookgpt_core]
+    index --> core
+    inference --> core
+```
+
+O domínio não conhece rede nem interface, e o cliente de inferência não conhece a
+interface — é o que permite testar a montagem do contexto e o streaming sem abrir
+uma janela. `index` e `inference` não se importam: a UI injeta o cliente no
+`Indexer`. Os contratos ficam em `[tool.importlinter]`, no `pyproject.toml` da raiz,
+e [tests/test_layers.py](tests/test_layers.py) os executa junto com a suíte.
 
 ## Fontes de contexto
 
@@ -190,6 +200,8 @@ de 1B, contexto extra é distrator.
 ```bash
 uv run ruff check
 uv run ruff format
+uv run lint-imports        # contratos entre os pacotes
+uv run basedpyright        # tipos
 uv run pytest              # rápido, sem rede
 uv run pytest -m network   # conversa de verdade com o serv04.local
 ```
@@ -230,6 +242,9 @@ não para a pasta Documentos. Onde isso cai depende de como o app foi iniciado:
 | --- | --- |
 | `uv run notebookgpt` (desenvolvimento) | `%APPDATA%\Appveyor Systems Inc\Flet\notebookgpt\` |
 | Empacotado por `flet build` | `%APPDATA%\<org>\<app>\notebookgpt\` |
+
+Para remover os dados do app (Windows Power Shell):
+`Remove-Item "$env:APPDATA\Appveyor Systems Inc\Flet\notebookgpt" -Recurse`
 
 Em desenvolvimento o diretório é o do próprio runner do Flet, compartilhado com
 qualquer outro app Flet rodando do código-fonte — o `org` e o `company` do

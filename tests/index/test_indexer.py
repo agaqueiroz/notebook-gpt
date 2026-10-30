@@ -164,6 +164,7 @@ async def test_sync_records_the_encoding_metrics(indexer):
     await indexer.sync([Source(name="a.txt", content=GRANDE)])
     metricas = indexer.last_encoding
 
+    assert metricas is not None
     assert metricas.model == indexer.client.settings.embedding_model
     assert metricas.dimensions == EMBEDDING_DIMS
     assert metricas.sources_encoded == 1

@@ -1,49 +1,20 @@
-"""As camadas do monorepo, verificadas no codigo-fonte.
+"""As camadas do monorepo, verificadas pelo import-linter.
 
-`ui -> index -> inference -> core`: o dominio nao conhece rede, banco nem interface;
-o cliente de inferencia nao conhece banco nem interface; o indice nao conhece a tela.
-Sem isso o PoC volta a ser um pacote achatado.
+`ui -> (index | inference) -> core`: o dominio nao conhece rede, banco nem interface;
+o cliente de inferencia e o indice nao se conhecem nem conhecem a tela. Sem isso o
+PoC volta a ser um pacote achatado.
+
+Os contratos ficam em `[tool.importlinter]`, no pyproject da raiz. Rodar aqui faz
+`uv run pytest` reprovar uma violacao mesmo sem CI.
 """
 
-import re
 from pathlib import Path
 
-import pytest
+from importlinter.cli import lint_imports
 
-PACKAGES = Path(__file__).resolve().parents[1] / "packages"
-
-FORBIDDEN = {
-    "notebookgpt-core": (
-        "flet",
-        "openai",
-        "sqlite_vec",
-        "notebookgpt_inference",
-        "notebookgpt_index",
-        "notebookgpt_ui",
-    ),
-    "notebookgpt-inference": ("flet", "sqlite_vec", "notebookgpt_index", "notebookgpt_ui"),
-    # O indice usa sqlite-vec e fala com o servidor via `inference`; nao conhece a tela.
-    "notebookgpt-index": ("flet", "openai", "notebookgpt_ui"),
-    "notebookgpt-ui": (),
-}
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def sources(package: str) -> list[Path]:
-    found = sorted((PACKAGES / package / "src").rglob("*.py"))
-    assert found, f"nenhum modulo encontrado em {package}"
-    return found
-
-
-def imported_root(line: str) -> str | None:
-    """O pacote de topo importado por uma linha, ou None se nao for um import."""
-    match = re.match(r"(?:from|import)\s+([A-Za-z_][\w.]*)", line.strip())
-    return match.group(1).split(".", 1)[0] if match else None
-
-
-@pytest.mark.parametrize("package", sorted(FORBIDDEN))
-def test_packages_only_import_the_layers_below_them(package):
-    banned = set(FORBIDDEN[package])
-    for path in sources(package):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            root = imported_root(line)
-            assert root not in banned, f"{path.name}:{number} importa {root}"
+def test_import_contracts_are_kept(monkeypatch):
+    monkeypatch.chdir(ROOT)
+    assert lint_imports() == 0

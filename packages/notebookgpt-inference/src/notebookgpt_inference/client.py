@@ -8,10 +8,12 @@ daqui saem apenas trechos de texto e `InferenceError`.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from typing import cast
 
 import openai
 from notebookgpt_core.models import Message
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from notebookgpt_inference.settings import InferenceSettings
 
@@ -40,11 +42,12 @@ def _is_busy(error: openai.APIStatusError) -> bool:
     if error.status_code != 503:
         return False
     body = error.body if isinstance(error.body, dict) else {}
-    detail = body.get("error") if isinstance(body.get("error"), dict) else {}
-    return detail.get("code") == BUSY_CODE or BUSY_CODE in str(error)
+    detail = body.get("error")
+    code = detail.get("code") if isinstance(detail, dict) else None
+    return code == BUSY_CODE or BUSY_CODE in str(error)
 
 
-def _wire_format(messages: Sequence[Message]) -> list[dict[str, str]]:
+def _wire_format(messages: Sequence[Message]) -> list[ChatCompletionMessageParam]:
     """So `role` e `content` vao para a API.
 
     `Message` tambem carrega os trechos que embasaram a resposta, para a interface
@@ -52,7 +55,8 @@ def _wire_format(messages: Sequence[Message]) -> list[dict[str, str]]:
     `asdict` ingenuo mandaria `passages` junto e o servidor receberia um campo que
     nao existe na API da OpenAI.
     """
-    return [{"role": message.role, "content": message.content} for message in messages]
+    wire = [{"role": message.role, "content": message.content} for message in messages]
+    return cast("list[ChatCompletionMessageParam]", wire)
 
 
 def _build_client(settings: InferenceSettings) -> AsyncOpenAI:
